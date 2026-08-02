@@ -802,7 +802,536 @@
               <div><h2>教师账号</h2><div class="muted">最多5位老师，各自数据互不混合。</div></div>
               <button class="btn violet" onclick="showNewTeacherForm()">＋ 增加老师</button>
             </div>
-            <div id="tea…5663 tokens truncated…态','得分','等级','通过题数','提交时间'];
+            <div id="teacherAccountList"></div>
+            <div id="newTeacherForm" class="form-stack hidden" style="margin-top:14px;">
+              <label><span>登录账号</span><input id="newTeacherUsername" placeholder="例如：teacher2"></label>
+              <label><span>教师姓名</span><input id="newTeacherDisplayName" placeholder="例如：李老师"></label>
+              <label><span>初始密码</span><input id="newTeacherPasswordInput" type="password"></label>
+              <button class="btn green" onclick="saveTeacherAccount(this)">创建教师账号</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="studentView" class="view">
+        <div class="home-card panel">
+          <div>
+            <h2 id="studentHello">学生</h2>
+            <div class="muted" id="studentHistoryLine">暂无作业记录</div>
+          </div>
+          <div class="big-score">
+            <span class="muted">最高分</span>
+            <strong id="bestScore">0</strong>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-top:16px;">
+          <h2>选择日期作业</h2>
+          <div class="muted" style="margin-bottom:12px;">请选择老师已经发布的日期和题目。</div>
+          <div id="availableAssignmentList" class="available-assignment-list"></div>
+        </div>
+
+        <div id="assignmentPanel" class="assignment">
+          <div class="panel">
+            <div class="row" style="justify-content: space-between; margin-bottom: 12px;">
+              <h2 id="questionProgress">第 1 题</h2>
+              <span class="badge" id="questionState">待录音</span>
+            </div>
+            <div class="prompt" id="promptText"></div>
+            <div class="pinyin-toggle-row">
+              <label class="pinyin-toggle">
+                <input id="showPinyinToggle" type="checkbox" onchange="togglePinyin(this.checked)">
+                显示题目拼音
+              </label>
+            </div>
+            <div class="pinyin-box hidden" id="pinyinBox"></div>
+            <div class="row" style="margin-top: 12px;">
+              <button class="btn" onclick="speakPrompt()">朗读题目</button>
+              <button class="btn red" id="recordBtn" onclick="startRecording()">开始录音</button>
+              <button class="btn amber" id="stopRecordBtn" onclick="stopRecording()" disabled>停止录音</button>
+              <button class="btn violet" onclick="scoreCurrentQuestion()">判分</button>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h3>识别文字</h3>
+            <div class="transcript" id="transcriptBox">等待录音</div>
+            <div class="score-line" id="scoreLine">
+              <span class="badge">未判分</span>
+            </div>
+            <div class="row" style="margin-top: 12px;">
+              <button class="btn green" id="nextBtn" onclick="nextOrSubmit()" disabled>下一题</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-top: 16px;">
+          <h2>最近成绩</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>时间</th>
+                  <th>作业日期</th>
+                  <th>作业名称</th>
+                  <th>得分</th>
+                  <th>等级</th>
+                  <th>通过题数</th>
+                </tr>
+              </thead>
+              <tbody id="studentHistoryTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    // Supabase Edge Function API（新加坡区域）。
+    const API_URL = new URLSearchParams(location.search).get('api')
+      || 'https://aivbntweufgvrnjoqils.supabase.co/functions/v1/recording-pro-api';
+    const SESSION_CACHE_KEY = 'recording-pro-session-v2';
+
+    const state = {
+      config: { passScore: 70, questionLimit: 20, assignmentLimit: 20, studentLimit: 20, teacherLimit: 5, speechLang: 'zh-CN' },
+      teacherToken: '',
+      studentToken: '',
+      teacherData: null,
+      student: null,
+      dashboard: null,
+      assignment: null,
+      currentIndex: 0,
+      results: [],
+      recognition: null,
+      transcript: '',
+      recording: false,
+      showPinyin: false,
+      selectedSetId: '',
+    };
+
+    async function server(fn, ...args) {
+      if (API_URL.includes('YOUR_PROJECT_REF')) {
+        throw new Error('请先把页面中的 YOUR_PROJECT_REF 替换为 Supabase 项目编号。');
+      }
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 12000);
+      try {
+        const response = await fetch(API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fn, args }),
+          signal: controller.signal,
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok || !payload || !payload.ok) {
+          throw new Error(payload && payload.error ? payload.error : `服务器请求失败 (${response.status})`);
+        }
+        return payload.value;
+      } catch (error) {
+        if (error && error.name === 'AbortError') throw new Error('服务器响应超时，请检查网络后重试。');
+        throw error;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    function switchLogin(mode) {
+      document.getElementById('studentTab').classList.toggle('active', mode === 'student');
+      document.getElementById('teacherTab').classList.toggle('active', mode === 'teacher');
+      document.getElementById('studentLoginPanel').classList.toggle('hidden', mode !== 'student');
+      document.getElementById('teacherLoginPanel').classList.toggle('hidden', mode !== 'teacher');
+    }
+
+    async function loadTeacherOptions() {
+      const select = document.getElementById('studentTeacher');
+      try {
+        const teachers = await server('listTeachers');
+        select.innerHTML = teachers.length
+          ? teachers.map(item => `<option value="${escapeAttribute(item.username)}">${escapeHtml(item.displayName)}（${escapeHtml(item.username)}）</option>`).join('')
+          : '<option value="">暂无可用老师</option>';
+      } catch (_) {
+        select.innerHTML = '<option value="">老师列表加载失败，请刷新</option>';
+      }
+    }
+
+    async function loginTeacher(btn) {
+      await withBusy(btn, async () => {
+        const username = document.getElementById('teacherUsername').value.trim().toLowerCase();
+        const password = document.getElementById('teacherPassword').value;
+        const res = await server('teacherLogin', username, password);
+        if (!res || !res.token) {
+          throw new Error('教师登录失败：后端没有返回登录 token。请确认 Code.gs 已更新并重新部署。');
+        }
+        state.teacherToken = res.token;
+        state.config = res.config || state.config;
+        state.teacherData = res.teacherData || emptyTeacherData();
+        showView('teacher');
+        renderTeacher();
+        saveSessionCache('teacher');
+        toast('教师后台已加载。');
+      });
+    }
+
+    async function loginStudent(btn) {
+      await withBusy(btn, async () => {
+        const teacherUsername = document.getElementById('studentTeacher').value;
+        const name = document.getElementById('studentName').value.trim();
+        const password = document.getElementById('studentPassword').value;
+        const res = await server('studentLogin', teacherUsername, name, password);
+        state.studentToken = res.token;
+        state.config = res.config || state.config;
+        state.student = res.student;
+        state.dashboard = res.dashboard || { bestScore: 0, history: [] };
+        showView('student');
+        renderStudentHome();
+        saveSessionCache('student');
+        toast('学生作业已打开。');
+      });
+    }
+
+    function emptyTeacherData() {
+      return {
+        teacher: null,
+        sets: [],
+        students: [],
+        attempts: [],
+        teachers: []
+      };
+    }
+
+    function showView(view) {
+      ['loginView', 'teacherView', 'studentView'].forEach(id => {
+        document.getElementById(id).classList.remove('active');
+      });
+      document.getElementById(view + 'View').classList.add('active');
+      document.getElementById('logoutBtn').classList.toggle('hidden', view === 'login');
+      document.getElementById('topTitle').textContent =
+        view === 'teacher' ? '教师后台' : view === 'student' ? '学生作业' : '登录';
+      document.getElementById('globalStatus').textContent =
+        view === 'teacher' && state.teacherData && state.teacherData.teacher
+          ? `${state.teacherData.teacher.displayName} 在线`
+          : view === 'student' && state.student
+            ? `${state.student.teacherName || '老师'} · 学生在线`
+            : '准备就绪';
+    }
+
+    function logout() {
+      stopRecording();
+      const token = state.teacherToken || state.studentToken;
+      if (token && !API_URL.includes('YOUR_PROJECT_REF')) server('logout', token).catch(() => {});
+      localStorage.removeItem(SESSION_CACHE_KEY);
+      state.teacherToken = '';
+      state.studentToken = '';
+      state.teacherData = null;
+      state.student = null;
+      state.dashboard = null;
+      state.assignment = null;
+      state.results = [];
+      state.showPinyin = false;
+      state.selectedSetId = '';
+      const pinyinToggle = document.getElementById('showPinyinToggle');
+      if (pinyinToggle) pinyinToggle.checked = false;
+      updatePinyinDisplay('');
+      showView('login');
+    }
+
+    function saveSessionCache(role) {
+      const cached = role === 'teacher'
+        ? { role, token: state.teacherToken, config: state.config, teacherData: state.teacherData }
+        : { role, token: state.studentToken, config: state.config, student: state.student, dashboard: state.dashboard };
+      localStorage.setItem(SESSION_CACHE_KEY, JSON.stringify(cached));
+    }
+
+    async function restoreSession() {
+      let cached;
+      try { cached = JSON.parse(localStorage.getItem(SESSION_CACHE_KEY) || 'null'); } catch (_) { return; }
+      if (!cached || !cached.token) return;
+      state.config = cached.config || state.config;
+      if (cached.role === 'teacher') {
+        state.teacherToken = cached.token;
+        state.teacherData = cached.teacherData || emptyTeacherData();
+        showView('teacher');
+        renderTeacher();
+        try {
+          state.teacherData = await server('getTeacherData', state.teacherToken);
+          renderTeacher();
+          saveSessionCache('teacher');
+        } catch (_) { logout(); toast('登录已过期，请重新登录。'); }
+      } else if (cached.role === 'student' && cached.student) {
+        state.studentToken = cached.token;
+        state.student = cached.student;
+        state.dashboard = cached.dashboard || { bestScore: 0, history: [] };
+        showView('student');
+        renderStudentHome();
+        try {
+          state.dashboard = await server('getStudentDashboard', state.studentToken);
+          renderStudentHome();
+          saveSessionCache('student');
+        } catch (_) { logout(); toast('登录已过期，请重新登录。'); }
+      }
+    }
+
+    function renderTeacher() {
+      const data = state.teacherData || emptyTeacherData();
+      const sets = data.sets || [];
+      const students = data.students || [];
+      if (state.selectedSetId && !sets.some(item => item.setId === state.selectedSetId)) state.selectedSetId = '';
+      if (!state.selectedSetId && sets.length) state.selectedSetId = sets[0].setId;
+      document.getElementById('teacherSetCount').textContent = sets.length;
+      document.getElementById('teacherStudentCount').textContent = `${students.length}/${state.config.studentLimit || 20}`;
+      document.getElementById('teacherAttemptCount').textContent = (data.attempts || []).length;
+      document.getElementById('teacherDisplayName').textContent = data.teacher ? data.teacher.displayName : '-';
+      document.getElementById('studentLimitText').textContent = `当前 ${students.length}/${state.config.studentLimit || 20} 人`;
+      document.getElementById('questionLimitText').textContent = `每份最多 ${state.config.questionLimit || 20} 题`;
+      renderAssignmentList();
+      const selected = sets.find(item => item.setId === state.selectedSetId);
+      renderAssignmentEditor(selected || null);
+      renderStudentRows(students);
+      renderGradeFilter();
+      renderTeacherAccounts();
+      showView('teacher');
+    }
+
+    function renderAssignmentList() {
+      const list = document.getElementById('assignmentList');
+      const sets = (state.teacherData && state.teacherData.sets) || [];
+      if (!sets.length) {
+        list.innerHTML = '<div class="empty-note">还没有日期作业，请点击“新建日期作业”。</div>';
+        return;
+      }
+      list.innerHTML = sets.map(item => `
+        <div class="assignment-item ${item.setId === state.selectedSetId ? 'active' : ''}">
+          <div>
+            <strong>${escapeHtml(item.assignmentDate)} · ${escapeHtml(item.title)}</strong>
+            <div class="assignment-meta">
+              <span>${item.questions.length} 题</span>
+              <span>${item.published ? '已发布' : '草稿'}</span>
+            </div>
+          </div>
+          <button class="btn secondary" onclick="selectDateAssignment('${item.setId}')">编辑</button>
+        </div>
+      `).join('');
+    }
+
+    function selectDateAssignment(setId) {
+      state.selectedSetId = setId;
+      const selected = (state.teacherData.sets || []).find(item => item.setId === setId) || null;
+      renderAssignmentList();
+      renderAssignmentEditor(selected);
+    }
+
+    function newDateAssignment() {
+      state.selectedSetId = '';
+      renderAssignmentList();
+      renderAssignmentEditor(null);
+      document.getElementById('assignmentTitle').focus();
+    }
+
+    function renderAssignmentEditor(set) {
+      document.getElementById('assignmentDate').value = set ? set.assignmentDate : bangkokToday();
+      document.getElementById('assignmentTitle').value = set ? set.title : '';
+      document.getElementById('assignmentPublished').checked = set ? set.published !== false : true;
+      renderQuestionRows(set ? set.questions : []);
+    }
+
+    function bangkokToday() {
+      return new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit'
+      }).format(new Date());
+    }
+
+    function renderQuestionRows(questions) {
+      const list = document.getElementById('questionList');
+      list.innerHTML = '';
+      (questions.length ? questions : [{ text: '' }]).forEach((q, index) => {
+        list.appendChild(questionRow(q, index));
+      });
+      renumberQuestions();
+    }
+
+    function questionRow(q, index) {
+      const row = document.createElement('div');
+      row.className = 'question-row';
+      row.dataset.id = q.questionId || '';
+      row.innerHTML = `
+        <span class="index">${index + 1}</span>
+        <textarea placeholder="输入要学生复述的内容">${escapeHtml(q.text || '')}</textarea>
+        <button class="btn secondary" type="button">删除</button>
+      `;
+      row.querySelector('button').onclick = () => {
+        row.remove();
+        renumberQuestions();
+      };
+      return row;
+    }
+
+    function addQuestionRow() {
+      const list = document.getElementById('questionList');
+      if (list.children.length >= (state.config.questionLimit || 20)) {
+        toast('最多只能设置 20 道题。');
+        return;
+      }
+      list.appendChild(questionRow({ text: '' }, list.children.length));
+      renumberQuestions();
+    }
+
+    function renumberQuestions() {
+      [...document.querySelectorAll('#questionList .question-row')].forEach((row, index) => {
+        row.querySelector('.index').textContent = index + 1;
+      });
+    }
+
+    async function saveDateAssignment(btn) {
+      await withBusy(btn, async () => {
+        const questions = [...document.querySelectorAll('#questionList .question-row')].map(row => ({
+          text: row.querySelector('textarea').value.trim(),
+        }));
+        const payload = {
+          setId: state.selectedSetId,
+          assignmentDate: document.getElementById('assignmentDate').value,
+          title: document.getElementById('assignmentTitle').value.trim(),
+          published: document.getElementById('assignmentPublished').checked,
+          questions,
+        };
+        state.teacherData = await server('saveDateAssignment', state.teacherToken, payload);
+        const saved = (state.teacherData.sets || []).find(item =>
+          item.assignmentDate === payload.assignmentDate && item.title === payload.title
+        );
+        if (saved) state.selectedSetId = saved.setId;
+        renderTeacher();
+        saveSessionCache('teacher');
+        toast(payload.published ? '日期作业已保存并发布。' : '日期作业草稿已保存。');
+      });
+    }
+
+    function renderStudentRows(students) {
+      const list = document.getElementById('studentList');
+      list.innerHTML = '';
+      students.forEach(student => {
+        list.appendChild(studentRow(student));
+      });
+      if (!students.length) list.innerHTML = '<div class="empty-note">还没有学生，请点击右上角“增加学生”。</div>';
+    }
+
+    function studentRow(student) {
+      const row = document.createElement('div');
+      row.className = 'student-row';
+      row.dataset.id = student.studentId || '';
+      row.innerHTML = `
+        <input class="student-name" placeholder="姓名" value="${escapeAttribute(student.name || '')}">
+        <input class="student-password" type="password" placeholder="${student.studentId ? '留空不改密码' : '设置密码'}">
+        <label style="display:flex; align-items:center; gap:8px; color:var(--ink);">
+          <input class="student-active" type="checkbox" ${student.active === false ? '' : 'checked'} style="width:auto;">
+          启用
+        </label>
+        <div class="row" style="gap:6px;">
+          <button class="btn green save-student" type="button">保存</button>
+          <button class="btn secondary remove-student" type="button">停用</button>
+        </div>
+      `;
+      row.querySelector('.save-student').onclick = event => saveStudentRow(event.currentTarget);
+      row.querySelector('.remove-student').onclick = event => deactivateStudentRow(event.currentTarget);
+      return row;
+    }
+
+    function addStudentRow() {
+      const limit = state.config.studentLimit || 20;
+      const list = document.getElementById('studentList');
+      if (list.querySelectorAll('.student-row').length >= limit) {
+        toast(`每位老师最多 ${limit} 名学生。`);
+        return;
+      }
+      if (list.querySelector('.empty-note')) list.innerHTML = '';
+      const row = studentRow({ name: '', active: true });
+      list.prepend(row);
+      row.querySelector('.student-name').focus();
+    }
+
+    async function saveStudentRow(btn) {
+      const row = btn.closest('.student-row');
+      await withBusy(btn, async () => {
+        const student = {
+          studentId: row.dataset.id || '',
+          name: row.querySelector('.student-name').value.trim(),
+          password: row.querySelector('.student-password').value,
+          active: row.querySelector('.student-active').checked,
+        };
+        state.teacherData = await server('upsertStudent', state.teacherToken, student);
+        renderTeacher();
+        saveSessionCache('teacher');
+        toast(`学生“${student.name}”已保存。`);
+      });
+    }
+
+    async function deactivateStudentRow(btn) {
+      const row = btn.closest('.student-row');
+      const studentId = row.dataset.id || '';
+      if (!studentId) {
+        row.remove();
+        return;
+      }
+      await withBusy(btn, async () => {
+        state.teacherData = await server('deactivateStudent', state.teacherToken, studentId);
+        renderTeacher();
+        saveSessionCache('teacher');
+        toast('学生账号已停用。');
+      });
+    }
+
+    function renderGradeFilter() {
+      const select = document.getElementById('gradeAssignmentFilter');
+      const sets = (state.teacherData && state.teacherData.sets) || [];
+      const previous = select.value;
+      select.innerHTML = sets.length
+        ? sets.map(item => `<option value="${item.setId}">${escapeHtml(item.assignmentDate)} · ${escapeHtml(item.title)}</option>`).join('')
+        : '<option value="">暂无日期作业</option>';
+      if (sets.some(item => item.setId === previous)) select.value = previous;
+      renderGradeRows();
+    }
+
+    function currentGradeRows() {
+      const data = state.teacherData || emptyTeacherData();
+      const setId = document.getElementById('gradeAssignmentFilter').value;
+      const set = (data.sets || []).find(item => item.setId === setId);
+      return (data.students || []).slice(0, state.config.studentLimit || 20).map((student, index) => {
+        const attempts = (data.attempts || []).filter(item => item.setId === setId && item.studentId === student.studentId);
+        attempts.sort((a, b) => b.score - a.score);
+        return { index: index + 1, student, set, attempt: attempts[0] || null };
+      });
+    }
+
+    function renderGradeRows() {
+      const body = document.getElementById('gradeTable');
+      const rows = currentGradeRows();
+      if (!rows.length) {
+        body.innerHTML = '<tr><td colspan="9">暂无学生或日期作业</td></tr>';
+        return;
+      }
+      body.innerHTML = rows.map(row => `
+        <tr>
+          <td>${row.index}</td>
+          <td>${escapeHtml(row.student.name)}</td>
+          <td>${row.set ? escapeHtml(row.set.assignmentDate) : '-'}</td>
+          <td>${row.set ? escapeHtml(row.set.title) : '-'}</td>
+          <td><span class="badge ${row.attempt ? 'pass' : ''}">${row.attempt ? '已完成' : '未完成'}</span></td>
+          <td>${row.attempt ? row.attempt.score : '-'}</td>
+          <td>${row.attempt ? escapeHtml(row.attempt.grade) : '-'}</td>
+          <td>${row.attempt ? `${row.attempt.passedCount}/${row.attempt.questionCount}` : '-'}</td>
+          <td>${row.attempt ? escapeHtml(row.attempt.timestamp) : '-'}</td>
+        </tr>
+      `).join('');
+    }
+
+    function downloadGrades() {
+      const rows = currentGradeRows();
+      if (!rows.length) {
+        toast('当前没有可下载的学生成绩。');
+        return;
+      }
+      const header = ['序号','学生','作业日期','作业名称','完成状态','得分','等级','通过题数','提交时间'];
       const dataRows = rows.map(row => [
         row.index,
         row.student.name,
@@ -1323,4 +1852,3 @@
   </script>
 </body>
 </html>
-
