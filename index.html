@@ -37,7 +37,7 @@
     }
 
     .app {
-      width: min(1180px, calc(100vw - 28px));
+      width: min(1480px, calc(100vw - 28px));
       margin: 24px auto;
     }
 
@@ -317,6 +317,109 @@
       align-items: center;
     }
 
+    .assignment-list,
+    .available-assignment-list {
+      display: grid;
+      gap: 9px;
+    }
+
+    .assignment-list {
+      max-height: 290px;
+      overflow-y: auto;
+      margin-bottom: 14px;
+    }
+
+    .assignment-item,
+    .available-assignment-item {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .assignment-item.active {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.10);
+    }
+
+    .assignment-meta {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .editor-fields {
+      display: grid;
+      grid-template-columns: minmax(150px, 0.42fr) minmax(220px, 1fr) auto;
+      gap: 10px;
+      align-items: end;
+      margin-bottom: 12px;
+    }
+
+    .student-list {
+      max-height: 560px;
+      overflow-y: auto;
+      padding-right: 2px;
+    }
+
+    .grade-panel {
+      margin-top: 16px;
+    }
+
+    .grade-toolbar {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+
+    .grade-toolbar label {
+      min-width: min(420px, 100%);
+    }
+
+    .grade-table {
+      max-height: 690px;
+      overflow: auto;
+    }
+
+    .grade-table th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+
+    .empty-note {
+      padding: 18px;
+      border: 1px dashed #aab4c4;
+      border-radius: 8px;
+      color: var(--muted);
+      text-align: center;
+      background: #fbfdff;
+    }
+
+    .teacher-account-row {
+      display: grid;
+      grid-template-columns: 0.8fr 1fr auto;
+      gap: 10px;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .teacher-account-row:last-child {
+      border-bottom: 0;
+    }
+
     .index {
       width: 34px;
       height: 34px;
@@ -520,6 +623,11 @@
         grid-template-columns: 1fr;
       }
 
+      .editor-fields,
+      .teacher-account-row {
+        grid-template-columns: 1fr;
+      }
+
       header {
         align-items: flex-start;
         flex-direction: column;
@@ -557,6 +665,10 @@
             <div id="studentLoginPanel" class="form-stack">
               <h2>学生登录</h2>
               <label>
+                <span>选择老师</span>
+                <select id="studentTeacher"><option value="">正在加载老师...</option></select>
+              </label>
+              <label>
                 <span>姓名</span>
                 <input id="studentName" autocomplete="username" placeholder="例如：王小明">
               </label>
@@ -569,6 +681,10 @@
 
             <div id="teacherLoginPanel" class="form-stack hidden">
               <h2>教师登录</h2>
+              <label>
+                <span>教师账号</span>
+                <input id="teacherUsername" autocomplete="username" placeholder="例如：teacher1">
+              </label>
               <label>
                 <span>教师密码</span>
                 <input id="teacherPassword" type="password" autocomplete="current-password">
@@ -585,83 +701,113 @@
               <div class="metric"><span class="muted">A 级</span><span class="num">90</span></div>
               <div class="metric"><span class="muted">A*</span><span class="num">100</span></div>
             </div>
-            <div class="muted">一次作业随机抽取最多 10 题；题库不足 10 题时按实际题数生成。</div>
+            <div class="muted">学生登录后按日期选择老师发布的作业；每份作业最多 20 道固定题目。</div>
           </div>
         </div>
       </section>
 
       <section id="teacherView" class="view">
         <div class="metric-row">
-          <div class="metric"><span class="muted">题库</span><span class="num" id="teacherQuestionCount">0</span></div>
-          <div class="metric"><span class="muted">学生</span><span class="num" id="teacherStudentCount">0</span></div>
-          <div class="metric"><span class="muted">作业记录</span><span class="num" id="teacherAttemptCount">0</span></div>
-          <div class="metric"><span class="muted">当前题库</span><span class="num" id="teacherSetVersion">-</span></div>
+          <div class="metric"><span class="muted">日期作业</span><span class="num" id="teacherSetCount">0</span></div>
+          <div class="metric"><span class="muted">学生（最多20人）</span><span class="num" id="teacherStudentCount">0/20</span></div>
+          <div class="metric"><span class="muted">完成记录</span><span class="num" id="teacherAttemptCount">0</span></div>
+          <div class="metric"><span class="muted">当前教师</span><span class="num" id="teacherDisplayName" style="font-size:22px;">-</span></div>
         </div>
 
         <div class="grid teacher">
-          <div class="grid">
-            <div class="panel">
-              <div class="row" style="justify-content: space-between; margin-bottom: 12px;">
-                <h2>复述题库</h2>
-                <button class="btn" onclick="addQuestionRow()">新增题目</button>
+          <div class="panel">
+            <div class="row" style="justify-content: space-between; margin-bottom: 12px;">
+              <div>
+                <h2>日期作业</h2>
+                <div class="muted">选择已有作业编辑，或新建一天的固定题目。</div>
+              </div>
+              <button class="btn" onclick="newDateAssignment()">新建日期作业</button>
+            </div>
+            <div id="assignmentList" class="assignment-list"></div>
+            <div class="panel soft" style="padding:12px;">
+              <div class="editor-fields">
+                <label><span>作业日期</span><input id="assignmentDate" type="date"></label>
+                <label><span>作业名称</span><input id="assignmentTitle" placeholder="例如：8月5日复述练习"></label>
+                <label style="display:flex; flex-direction:row; align-items:center; gap:8px; padding-bottom:10px; color:var(--ink);">
+                  <input id="assignmentPublished" type="checkbox" checked style="width:auto;"> 发布给学生
+                </label>
+              </div>
+              <div class="row" style="justify-content: space-between; margin-bottom: 10px;">
+                <h3>作业题目</h3>
+                <button class="btn secondary" onclick="addQuestionRow()">新增题目</button>
               </div>
               <div id="questionList" class="question-list"></div>
               <div class="row" style="margin-top: 12px;">
-                <button class="btn green" onclick="saveQuestionRows(this)">保存题库</button>
-                <span class="muted" id="questionLimitText">最多 20 题</span>
-              </div>
-            </div>
-
-            <div class="panel">
-              <h2>教师密码</h2>
-              <div class="form-stack">
-                <label>
-                  <span>当前密码</span>
-                  <input id="oldTeacherPassword" type="password">
-                </label>
-                <label>
-                  <span>新密码</span>
-                  <input id="newTeacherPassword" type="password">
-                </label>
-                <button class="btn amber" onclick="changePassword(this)">修改密码</button>
+                <button class="btn green" onclick="saveDateAssignment(this)">保存日期作业</button>
+                <span class="muted" id="questionLimitText">每份最多 20 题</span>
               </div>
             </div>
           </div>
 
-          <div class="grid">
-            <div class="panel">
-              <div class="row" style="justify-content: space-between; margin-bottom: 12px;">
+          <div class="panel">
+            <div class="row" style="justify-content: space-between; margin-bottom: 12px;">
+              <div>
                 <h2>学生账号</h2>
-                <button class="btn teal" onclick="addStudentRow()">新增学生</button>
+                <div class="muted" id="studentLimitText">当前 0/20 人</div>
               </div>
-              <div id="studentList" class="student-list"></div>
-              <div class="row" style="margin-top: 12px;">
-                <button class="btn green" onclick="saveStudentRows(this)">保存学生</button>
-                <span class="muted">新学生必须填写密码；旧学生留空则不改。</span>
-              </div>
+              <button class="btn teal" onclick="addStudentRow()">＋ 增加学生</button>
             </div>
+            <div id="studentList" class="student-list"></div>
+          </div>
+        </div>
 
-            <div class="panel">
-              <div class="row" style="justify-content: space-between; margin-bottom: 12px;">
-                <h2>成绩记录</h2>
-                <button class="btn secondary" onclick="refreshTeacherData(this)">刷新</button>
-              </div>
-              <div class="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>时间</th>
-                      <th>题库</th>
-                      <th>学生</th>
-                      <th>得分</th>
-                      <th>等级</th>
-                      <th>通过题数</th>
-                      <th>最高分</th>
-                    </tr>
-                  </thead>
-                  <tbody id="attemptTable"></tbody>
-                </table>
-              </div>
+        <div class="panel grade-panel">
+          <div class="grade-toolbar">
+            <label>
+              <span>成绩总览（每页显示本老师最多20名学生）</span>
+              <select id="gradeAssignmentFilter" onchange="renderGradeRows()"></select>
+            </label>
+            <div class="row">
+              <button class="btn secondary" onclick="refreshTeacherData(this)">刷新</button>
+              <button class="btn green" onclick="downloadGrades()">下载成绩 CSV</button>
+            </div>
+          </div>
+          <div class="table-wrap grade-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>序号</th>
+                  <th>学生</th>
+                  <th>作业日期</th>
+                  <th>作业名称</th>
+                  <th>完成状态</th>
+                  <th>得分</th>
+                  <th>等级</th>
+                  <th>通过题数</th>
+                  <th>提交时间</th>
+                </tr>
+              </thead>
+              <tbody id="gradeTable"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="grid two" style="margin-top:16px;">
+          <div class="panel">
+            <h2>修改我的密码</h2>
+            <div class="form-stack">
+              <label><span>当前密码</span><input id="oldTeacherPassword" type="password"></label>
+              <label><span>新密码</span><input id="newTeacherPassword" type="password"></label>
+              <button class="btn amber" onclick="changePassword(this)">修改密码</button>
+            </div>
+          </div>
+
+          <div class="panel hidden" id="teacherAccountsPanel">
+            <div class="row" style="justify-content:space-between; margin-bottom:12px;">
+              <div><h2>教师账号</h2><div class="muted">最多5位老师，各自数据互不混合。</div></div>
+              <button class="btn violet" onclick="showNewTeacherForm()">＋ 增加老师</button>
+            </div>
+            <div id="teacherAccountList"></div>
+            <div id="newTeacherForm" class="form-stack hidden" style="margin-top:14px;">
+              <label><span>登录账号</span><input id="newTeacherUsername" placeholder="例如：teacher2"></label>
+              <label><span>教师姓名</span><input id="newTeacherDisplayName" placeholder="例如：李老师"></label>
+              <label><span>初始密码</span><input id="newTeacherPasswordInput" type="password"></label>
+              <button class="btn green" onclick="saveTeacherAccount(this)">创建教师账号</button>
             </div>
           </div>
         </div>
@@ -679,8 +825,10 @@
           </div>
         </div>
 
-        <div class="row" style="margin: 14px 0;">
-          <button class="btn green" onclick="startHomework(this)">开始随机作业</button>
+        <div class="panel" style="margin-top:16px;">
+          <h2>选择日期作业</h2>
+          <div class="muted" style="margin-bottom:12px;">请选择老师已经发布的日期和题目。</div>
+          <div id="availableAssignmentList" class="available-assignment-list"></div>
         </div>
 
         <div id="assignmentPanel" class="assignment">
@@ -724,7 +872,8 @@
               <thead>
                 <tr>
                   <th>时间</th>
-                  <th>题库</th>
+                  <th>作业日期</th>
+                  <th>作业名称</th>
                   <th>得分</th>
                   <th>等级</th>
                   <th>通过题数</th>
@@ -744,10 +893,10 @@
     // Supabase Edge Function API（新加坡区域）。
     const API_URL = new URLSearchParams(location.search).get('api')
       || 'https://aivbntweufgvrnjoqils.supabase.co/functions/v1/recording-pro-api';
-    const SESSION_CACHE_KEY = 'recording-pro-session-v1';
+    const SESSION_CACHE_KEY = 'recording-pro-session-v2';
 
     const state = {
-      config: { passScore: 70, questionLimit: 20, assignmentLimit: 10, speechLang: 'zh-CN' },
+      config: { passScore: 70, questionLimit: 20, assignmentLimit: 20, studentLimit: 20, teacherLimit: 5, speechLang: 'zh-CN' },
       teacherToken: '',
       studentToken: '',
       teacherData: null,
@@ -760,6 +909,7 @@
       transcript: '',
       recording: false,
       showPinyin: false,
+      selectedSetId: '',
     };
 
     async function server(fn, ...args) {
@@ -795,10 +945,23 @@
       document.getElementById('teacherLoginPanel').classList.toggle('hidden', mode !== 'teacher');
     }
 
+    async function loadTeacherOptions() {
+      const select = document.getElementById('studentTeacher');
+      try {
+        const teachers = await server('listTeachers');
+        select.innerHTML = teachers.length
+          ? teachers.map(item => `<option value="${escapeAttribute(item.username)}">${escapeHtml(item.displayName)}（${escapeHtml(item.username)}）</option>`).join('')
+          : '<option value="">暂无可用老师</option>';
+      } catch (_) {
+        select.innerHTML = '<option value="">老师列表加载失败，请刷新</option>';
+      }
+    }
+
     async function loginTeacher(btn) {
       await withBusy(btn, async () => {
+        const username = document.getElementById('teacherUsername').value.trim().toLowerCase();
         const password = document.getElementById('teacherPassword').value;
-        const res = await server('teacherLogin', password);
+        const res = await server('teacherLogin', username, password);
         if (!res || !res.token) {
           throw new Error('教师登录失败：后端没有返回登录 token。请确认 Code.gs 已更新并重新部署。');
         }
@@ -814,9 +977,10 @@
 
     async function loginStudent(btn) {
       await withBusy(btn, async () => {
+        const teacherUsername = document.getElementById('studentTeacher').value;
         const name = document.getElementById('studentName').value.trim();
         const password = document.getElementById('studentPassword').value;
-        const res = await server('studentLogin', name, password);
+        const res = await server('studentLogin', teacherUsername, name, password);
         state.studentToken = res.token;
         state.config = res.config || state.config;
         state.student = res.student;
@@ -830,11 +994,11 @@
 
     function emptyTeacherData() {
       return {
-        questions: [],
+        teacher: null,
+        sets: [],
         students: [],
         attempts: [],
-        bestScores: [],
-        activeSet: { setId: '', setVersion: '', submittedAt: '', questionCount: 0 }
+        teachers: []
       };
     }
 
@@ -847,7 +1011,11 @@
       document.getElementById('topTitle').textContent =
         view === 'teacher' ? '教师后台' : view === 'student' ? '学生作业' : '登录';
       document.getElementById('globalStatus').textContent =
-        view === 'teacher' ? '教师在线' : view === 'student' ? '学生在线' : '准备就绪';
+        view === 'teacher' && state.teacherData && state.teacherData.teacher
+          ? `${state.teacherData.teacher.displayName} 在线`
+          : view === 'student' && state.student
+            ? `${state.student.teacherName || '老师'} · 学生在线`
+            : '准备就绪';
     }
 
     function logout() {
@@ -863,6 +1031,7 @@
       state.assignment = null;
       state.results = [];
       state.showPinyin = false;
+      state.selectedSetId = '';
       const pinyinToggle = document.getElementById('showPinyinToggle');
       if (pinyinToggle) pinyinToggle.checked = false;
       updatePinyinDisplay('');
@@ -906,16 +1075,72 @@
     }
 
     function renderTeacher() {
-      const data = state.teacherData || { questions: [], students: [], attempts: [] };
-      document.getElementById('teacherQuestionCount').textContent = data.questions.length;
-      document.getElementById('teacherStudentCount').textContent = data.students.length;
-      document.getElementById('teacherAttemptCount').textContent = data.attempts.length;
-      document.getElementById('teacherSetVersion').textContent =
-        data.activeSet && data.activeSet.setVersion ? `v${data.activeSet.setVersion}` : '-';
-      document.getElementById('questionLimitText').textContent = `最多 ${state.config.questionLimit || 20} 题`;
-      renderQuestionRows(data.questions);
-      renderStudentRows(data.students);
-      renderAttemptRows(data.attempts);
+      const data = state.teacherData || emptyTeacherData();
+      const sets = data.sets || [];
+      const students = data.students || [];
+      if (state.selectedSetId && !sets.some(item => item.setId === state.selectedSetId)) state.selectedSetId = '';
+      if (!state.selectedSetId && sets.length) state.selectedSetId = sets[0].setId;
+      document.getElementById('teacherSetCount').textContent = sets.length;
+      document.getElementById('teacherStudentCount').textContent = `${students.length}/${state.config.studentLimit || 20}`;
+      document.getElementById('teacherAttemptCount').textContent = (data.attempts || []).length;
+      document.getElementById('teacherDisplayName').textContent = data.teacher ? data.teacher.displayName : '-';
+      document.getElementById('studentLimitText').textContent = `当前 ${students.length}/${state.config.studentLimit || 20} 人`;
+      document.getElementById('questionLimitText').textContent = `每份最多 ${state.config.questionLimit || 20} 题`;
+      renderAssignmentList();
+      const selected = sets.find(item => item.setId === state.selectedSetId);
+      renderAssignmentEditor(selected || null);
+      renderStudentRows(students);
+      renderGradeFilter();
+      renderTeacherAccounts();
+      showView('teacher');
+    }
+
+    function renderAssignmentList() {
+      const list = document.getElementById('assignmentList');
+      const sets = (state.teacherData && state.teacherData.sets) || [];
+      if (!sets.length) {
+        list.innerHTML = '<div class="empty-note">还没有日期作业，请点击“新建日期作业”。</div>';
+        return;
+      }
+      list.innerHTML = sets.map(item => `
+        <div class="assignment-item ${item.setId === state.selectedSetId ? 'active' : ''}">
+          <div>
+            <strong>${escapeHtml(item.assignmentDate)} · ${escapeHtml(item.title)}</strong>
+            <div class="assignment-meta">
+              <span>${item.questions.length} 题</span>
+              <span>${item.published ? '已发布' : '草稿'}</span>
+            </div>
+          </div>
+          <button class="btn secondary" onclick="selectDateAssignment('${item.setId}')">编辑</button>
+        </div>
+      `).join('');
+    }
+
+    function selectDateAssignment(setId) {
+      state.selectedSetId = setId;
+      const selected = (state.teacherData.sets || []).find(item => item.setId === setId) || null;
+      renderAssignmentList();
+      renderAssignmentEditor(selected);
+    }
+
+    function newDateAssignment() {
+      state.selectedSetId = '';
+      renderAssignmentList();
+      renderAssignmentEditor(null);
+      document.getElementById('assignmentTitle').focus();
+    }
+
+    function renderAssignmentEditor(set) {
+      document.getElementById('assignmentDate').value = set ? set.assignmentDate : bangkokToday();
+      document.getElementById('assignmentTitle').value = set ? set.title : '';
+      document.getElementById('assignmentPublished').checked = set ? set.published !== false : true;
+      renderQuestionRows(set ? set.questions : []);
+    }
+
+    function bangkokToday() {
+      return new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit'
+      }).format(new Date());
     }
 
     function renderQuestionRows(questions) {
@@ -959,26 +1184,36 @@
       });
     }
 
-    async function saveQuestionRows(btn) {
+    async function saveDateAssignment(btn) {
       await withBusy(btn, async () => {
         const questions = [...document.querySelectorAll('#questionList .question-row')].map(row => ({
-          questionId: row.dataset.id || '',
           text: row.querySelector('textarea').value.trim(),
         }));
-        state.teacherData = await server('saveQuestions', state.teacherToken, questions);
+        const payload = {
+          setId: state.selectedSetId,
+          assignmentDate: document.getElementById('assignmentDate').value,
+          title: document.getElementById('assignmentTitle').value.trim(),
+          published: document.getElementById('assignmentPublished').checked,
+          questions,
+        };
+        state.teacherData = await server('saveDateAssignment', state.teacherToken, payload);
+        const saved = (state.teacherData.sets || []).find(item =>
+          item.assignmentDate === payload.assignmentDate && item.title === payload.title
+        );
+        if (saved) state.selectedSetId = saved.setId;
         renderTeacher();
         saveSessionCache('teacher');
-        const version = state.teacherData.activeSet && state.teacherData.activeSet.setVersion;
-        toast(version ? `题库已保存为 v${version}。` : '题库已保存。');
+        toast(payload.published ? '日期作业已保存并发布。' : '日期作业草稿已保存。');
       });
     }
 
     function renderStudentRows(students) {
       const list = document.getElementById('studentList');
       list.innerHTML = '';
-      (students.length ? students : [{ name: '', active: true }]).forEach(student => {
+      students.forEach(student => {
         list.appendChild(studentRow(student));
       });
+      if (!students.length) list.innerHTML = '<div class="empty-note">还没有学生，请点击右上角“增加学生”。</div>';
     }
 
     function studentRow(student) {
@@ -992,48 +1227,186 @@
           <input class="student-active" type="checkbox" ${student.active === false ? '' : 'checked'} style="width:auto;">
           启用
         </label>
-        <button class="btn secondary" type="button">删除</button>
+        <div class="row" style="gap:6px;">
+          <button class="btn green save-student" type="button">保存</button>
+          <button class="btn secondary remove-student" type="button">停用</button>
+        </div>
       `;
-      row.querySelector('button').onclick = () => row.remove();
+      row.querySelector('.save-student').onclick = event => saveStudentRow(event.currentTarget);
+      row.querySelector('.remove-student').onclick = event => deactivateStudentRow(event.currentTarget);
       return row;
     }
 
     function addStudentRow() {
-      document.getElementById('studentList').appendChild(studentRow({ name: '', active: true }));
+      const limit = state.config.studentLimit || 20;
+      const list = document.getElementById('studentList');
+      if (list.querySelectorAll('.student-row').length >= limit) {
+        toast(`每位老师最多 ${limit} 名学生。`);
+        return;
+      }
+      if (list.querySelector('.empty-note')) list.innerHTML = '';
+      const row = studentRow({ name: '', active: true });
+      list.prepend(row);
+      row.querySelector('.student-name').focus();
     }
 
-    async function saveStudentRows(btn) {
+    async function saveStudentRow(btn) {
+      const row = btn.closest('.student-row');
       await withBusy(btn, async () => {
-        const students = [...document.querySelectorAll('#studentList .student-row')].map(row => ({
+        const student = {
           studentId: row.dataset.id || '',
           name: row.querySelector('.student-name').value.trim(),
           password: row.querySelector('.student-password').value,
           active: row.querySelector('.student-active').checked,
-        }));
-        state.teacherData = await server('saveStudents', state.teacherToken, students);
+        };
+        state.teacherData = await server('upsertStudent', state.teacherToken, student);
         renderTeacher();
         saveSessionCache('teacher');
-        toast('学生账号已保存。');
+        toast(`学生“${student.name}”已保存。`);
       });
     }
 
-    function renderAttemptRows(attempts) {
-      const body = document.getElementById('attemptTable');
-      if (!attempts || attempts.length === 0) {
-        body.innerHTML = '<tr><td colspan="7">暂无成绩</td></tr>';
+    async function deactivateStudentRow(btn) {
+      const row = btn.closest('.student-row');
+      const studentId = row.dataset.id || '';
+      if (!studentId) {
+        row.remove();
         return;
       }
-      body.innerHTML = attempts.map(item => `
+      await withBusy(btn, async () => {
+        state.teacherData = await server('deactivateStudent', state.teacherToken, studentId);
+        renderTeacher();
+        saveSessionCache('teacher');
+        toast('学生账号已停用。');
+      });
+    }
+
+    function renderGradeFilter() {
+      const select = document.getElementById('gradeAssignmentFilter');
+      const sets = (state.teacherData && state.teacherData.sets) || [];
+      const previous = select.value;
+      select.innerHTML = sets.length
+        ? sets.map(item => `<option value="${item.setId}">${escapeHtml(item.assignmentDate)} · ${escapeHtml(item.title)}</option>`).join('')
+        : '<option value="">暂无日期作业</option>';
+      if (sets.some(item => item.setId === previous)) select.value = previous;
+      renderGradeRows();
+    }
+
+    function currentGradeRows() {
+      const data = state.teacherData || emptyTeacherData();
+      const setId = document.getElementById('gradeAssignmentFilter').value;
+      const set = (data.sets || []).find(item => item.setId === setId);
+      return (data.students || []).slice(0, state.config.studentLimit || 20).map((student, index) => {
+        const attempts = (data.attempts || []).filter(item => item.setId === setId && item.studentId === student.studentId);
+        attempts.sort((a, b) => b.score - a.score);
+        return { index: index + 1, student, set, attempt: attempts[0] || null };
+      });
+    }
+
+    function renderGradeRows() {
+      const body = document.getElementById('gradeTable');
+      const rows = currentGradeRows();
+      if (!rows.length) {
+        body.innerHTML = '<tr><td colspan="9">暂无学生或日期作业</td></tr>';
+        return;
+      }
+      body.innerHTML = rows.map(row => `
         <tr>
-          <td>${escapeHtml(item.timestamp)}</td>
-          <td>${item.setVersion ? `v${escapeHtml(item.setVersion)}` : '-'}</td>
-          <td>${escapeHtml(item.studentName)}</td>
-          <td>${item.score}</td>
-          <td>${escapeHtml(item.grade)}</td>
-          <td>${item.passedCount}/${item.questionCount}</td>
-          <td>${item.bestScore}</td>
+          <td>${row.index}</td>
+          <td>${escapeHtml(row.student.name)}</td>
+          <td>${row.set ? escapeHtml(row.set.assignmentDate) : '-'}</td>
+          <td>${row.set ? escapeHtml(row.set.title) : '-'}</td>
+          <td><span class="badge ${row.attempt ? 'pass' : ''}">${row.attempt ? '已完成' : '未完成'}</span></td>
+          <td>${row.attempt ? row.attempt.score : '-'}</td>
+          <td>${row.attempt ? escapeHtml(row.attempt.grade) : '-'}</td>
+          <td>${row.attempt ? `${row.attempt.passedCount}/${row.attempt.questionCount}` : '-'}</td>
+          <td>${row.attempt ? escapeHtml(row.attempt.timestamp) : '-'}</td>
         </tr>
       `).join('');
+    }
+
+    function downloadGrades() {
+      const rows = currentGradeRows();
+      if (!rows.length) {
+        toast('当前没有可下载的学生成绩。');
+        return;
+      }
+      const header = ['序号','学生','作业日期','作业名称','完成状态','得分','等级','通过题数','提交时间'];
+      const dataRows = rows.map(row => [
+        row.index,
+        row.student.name,
+        row.set ? row.set.assignmentDate : '',
+        row.set ? row.set.title : '',
+        row.attempt ? '已完成' : '未完成',
+        row.attempt ? row.attempt.score : '',
+        row.attempt ? row.attempt.grade : '',
+        row.attempt ? `${row.attempt.passedCount}/${row.attempt.questionCount}` : '',
+        row.attempt ? row.attempt.timestamp : '',
+      ]);
+      const csv = '\uFEFF' + [header, ...dataRows].map(row => row.map(csvCell).join(',')).join('\r\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const set = rows[0].set;
+      link.href = url;
+      link.download = `录音Pro成绩_${set ? set.assignmentDate : '全部'}.csv`;
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      toast('成绩文件已下载。');
+    }
+
+    function csvCell(value) {
+      let text = String(value ?? '');
+      if (/^[=+\-@]/.test(text)) text = "'" + text;
+      return `"${text.replace(/"/g, '""')}"`;
+    }
+
+    function renderTeacherAccounts() {
+      const data = state.teacherData || emptyTeacherData();
+      const panel = document.getElementById('teacherAccountsPanel');
+      const isAdmin = !!(data.teacher && data.teacher.isAdmin);
+      panel.classList.toggle('hidden', !isAdmin);
+      if (!isAdmin) return;
+      const list = document.getElementById('teacherAccountList');
+      list.innerHTML = (data.teachers || []).map(item => `
+        <div class="teacher-account-row">
+          <strong>${escapeHtml(item.displayName)}</strong>
+          <span class="muted">账号：${escapeHtml(item.username)}</span>
+          <span class="badge ${item.active ? 'pass' : ''}">${item.isAdmin ? '管理员' : item.active ? '可登录' : '已停用'}</span>
+        </div>
+      `).join('');
+    }
+
+    function showNewTeacherForm() {
+      const count = ((state.teacherData && state.teacherData.teachers) || []).length;
+      if (count >= (state.config.teacherLimit || 5)) {
+        toast('最多只能创建5个教师账号。');
+        return;
+      }
+      document.getElementById('newTeacherForm').classList.remove('hidden');
+      document.getElementById('newTeacherUsername').focus();
+    }
+
+    async function saveTeacherAccount(btn) {
+      await withBusy(btn, async () => {
+        const payload = {
+          username: document.getElementById('newTeacherUsername').value.trim(),
+          displayName: document.getElementById('newTeacherDisplayName').value.trim(),
+          password: document.getElementById('newTeacherPasswordInput').value,
+        };
+        state.teacherData = await server('saveTeacherAccount', state.teacherToken, payload);
+        document.getElementById('newTeacherForm').classList.add('hidden');
+        document.getElementById('newTeacherUsername').value = '';
+        document.getElementById('newTeacherDisplayName').value = '';
+        document.getElementById('newTeacherPasswordInput').value = '';
+        renderTeacher();
+        saveSessionCache('teacher');
+        await loadTeacherOptions();
+        toast(`教师“${payload.displayName}”已创建。`);
+      });
     }
 
     async function refreshTeacherData(btn) {
@@ -1057,7 +1430,7 @@
     }
 
     function renderStudentHome() {
-      document.getElementById('studentHello').textContent = `${state.student.name} 的作业`;
+      document.getElementById('studentHello').textContent = `${state.student.name} · ${state.student.teacherName || '老师'}的作业`;
       document.getElementById('bestScore').textContent = state.dashboard.bestScore || 0;
       const history = state.dashboard.history || [];
       document.getElementById('studentHistoryLine').textContent =
@@ -1065,29 +1438,49 @@
 
       const body = document.getElementById('studentHistoryTable');
       if (!history.length) {
-        body.innerHTML = '<tr><td colspan="5">暂无成绩</td></tr>';
+        body.innerHTML = '<tr><td colspan="6">暂无成绩</td></tr>';
+      } else {
+        body.innerHTML = history.map(item => `
+          <tr>
+            <td>${escapeHtml(item.timestamp)}</td>
+            <td>${escapeHtml(item.assignmentDate || '-')}</td>
+            <td>${escapeHtml(item.assignmentTitle || '日期作业')}</td>
+            <td>${item.score}</td>
+            <td>${escapeHtml(item.grade)}</td>
+            <td>${item.passedCount}/${item.questionCount}</td>
+          </tr>
+        `).join('');
+      }
+
+      const available = state.dashboard.availableAssignments || [];
+      const list = document.getElementById('availableAssignmentList');
+      if (!available.length) {
+        list.innerHTML = '<div class="empty-note">老师还没有发布日期作业。</div>';
         return;
       }
-      body.innerHTML = history.map(item => `
-        <tr>
-          <td>${escapeHtml(item.timestamp)}</td>
-          <td>${item.setVersion ? `v${escapeHtml(item.setVersion)}` : '-'}</td>
-          <td>${item.score}</td>
-          <td>${escapeHtml(item.grade)}</td>
-          <td>${item.passedCount}/${item.questionCount}</td>
-        </tr>
+      list.innerHTML = available.map(item => `
+        <div class="available-assignment-item">
+          <div>
+            <strong>${escapeHtml(item.assignmentDate)} · ${escapeHtml(item.title)}</strong>
+            <div class="assignment-meta">
+              <span>${item.questionCount} 题</span>
+              <span>${item.completed ? '曾经完成' : '尚未完成'}</span>
+            </div>
+          </div>
+          <button class="btn green" onclick="startHomework('${item.setId}', this)">${item.completed ? '再做一次' : '开始作业'}</button>
+        </div>
       `).join('');
     }
 
-    async function startHomework(btn) {
+    async function startHomework(setId, btn) {
       await withBusy(btn, async () => {
-        const assignment = await server('startAssignment', state.studentToken);
+        const assignment = await server('startAssignment', state.studentToken, setId);
         state.assignment = assignment;
         state.currentIndex = 0;
         state.results = new Array(assignment.questions.length);
         document.getElementById('assignmentPanel').classList.add('active');
         renderCurrentQuestion();
-        toast(`已生成 v${assignment.setVersion || ''} 的 ${assignment.questions.length} 道题。`);
+        toast(`已打开 ${assignment.assignmentDate} 的 ${assignment.questions.length} 道题。`);
       });
     }
 
@@ -1454,6 +1847,7 @@
       return escapeHtml(value).replace(/`/g, '&#096;');
     }
 
+    loadTeacherOptions();
     restoreSession();
   </script>
 </body>
