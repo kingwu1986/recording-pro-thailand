@@ -1,0 +1,1461 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>录音 Pro 复述作业</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    :root {
+      --ink: #1f2937;
+      --muted: #6b7280;
+      --line: #d8dee9;
+      --panel: #ffffff;
+      --soft: #f6f8fb;
+      --blue: #2563eb;
+      --green: #168a5b;
+      --red: #dc2626;
+      --amber: #b7791f;
+      --violet: #6d28d9;
+      --teal: #0f766e;
+      --shadow: 0 10px 35px rgba(31, 41, 55, 0.12);
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.72), rgba(246,248,251,0.94)),
+        url("https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1600&q=80");
+      background-size: cover;
+      background-attachment: fixed;
+      font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
+    }
+
+    .app {
+      width: min(1180px, calc(100vw - 28px));
+      margin: 24px auto;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 14px;
+      color: #111827;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(26px, 4vw, 44px);
+      line-height: 1.08;
+      letter-spacing: 0;
+    }
+
+    h2,
+    h3 {
+      margin: 0 0 14px;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      font-size: 22px;
+    }
+
+    h3 {
+      font-size: 17px;
+    }
+
+    button,
+    input,
+    textarea,
+    select {
+      font: inherit;
+    }
+
+    input,
+    textarea,
+    select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px 12px;
+      background: #fff;
+      color: var(--ink);
+      outline: none;
+    }
+
+    textarea {
+      min-height: 92px;
+      resize: vertical;
+      line-height: 1.55;
+    }
+
+    input:focus,
+    textarea:focus {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+    }
+
+    .shell {
+      background: rgba(255,255,255,0.94);
+      border: 1px solid rgba(216, 222, 233, 0.88);
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .topbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+      background: #111827;
+      color: white;
+    }
+
+    .topbar strong {
+      font-size: 18px;
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      min-height: 30px;
+      padding: 5px 10px;
+      border: 1px solid rgba(255,255,255,0.24);
+      border-radius: 999px;
+      color: #e5e7eb;
+      font-size: 13px;
+    }
+
+    .view {
+      display: none;
+      padding: 18px;
+    }
+
+    .view.active {
+      display: block;
+    }
+
+    .grid {
+      display: grid;
+      gap: 16px;
+    }
+
+    .grid.two {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+
+    .grid.teacher {
+      grid-template-columns: minmax(320px, 0.95fr) minmax(360px, 1.05fr);
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+    }
+
+    .panel.soft {
+      background: var(--soft);
+    }
+
+    .row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .row > * {
+      min-width: 0;
+    }
+
+    .row .grow {
+      flex: 1 1 220px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      width: auto;
+      min-height: 40px;
+      border: 0;
+      border-radius: 8px;
+      padding: 9px 14px;
+      color: white;
+      background: var(--blue);
+      cursor: pointer;
+      transition: transform 0.16s ease, opacity 0.16s ease;
+      white-space: nowrap;
+    }
+
+    .btn:hover {
+      transform: translateY(-1px);
+    }
+
+    .btn:disabled {
+      opacity: 0.48;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .btn.secondary {
+      color: var(--ink);
+      background: #e5e7eb;
+    }
+
+    .btn.green { background: var(--green); }
+    .btn.red { background: var(--red); }
+    .btn.amber { background: var(--amber); }
+    .btn.violet { background: var(--violet); }
+    .btn.teal { background: var(--teal); }
+
+    .tabs {
+      display: inline-grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px;
+      padding: 4px;
+      background: #e5e7eb;
+      border-radius: 10px;
+      margin-bottom: 14px;
+    }
+
+    .tab {
+      min-width: 120px;
+      border: 0;
+      border-radius: 8px;
+      padding: 9px 14px;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+    }
+
+    .tab.active {
+      background: #fff;
+      color: var(--ink);
+      box-shadow: 0 1px 8px rgba(31, 41, 55, 0.12);
+    }
+
+    .form-stack {
+      display: grid;
+      gap: 12px;
+      max-width: 430px;
+    }
+
+    label {
+      display: grid;
+      gap: 6px;
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    label span {
+      color: var(--ink);
+      font-weight: 700;
+    }
+
+    .muted {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .metric-row {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .metric {
+      min-height: 84px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: #fff;
+    }
+
+    .metric .num {
+      display: block;
+      margin-top: 8px;
+      font-size: 28px;
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    .question-list,
+    .student-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .question-row,
+    .student-row {
+      display: grid;
+      grid-template-columns: 38px minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: start;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .student-row {
+      grid-template-columns: minmax(120px, 1fr) minmax(120px, 1fr) 90px auto;
+      align-items: center;
+    }
+
+    .index {
+      width: 34px;
+      height: 34px;
+      display: inline-grid;
+      place-items: center;
+      border-radius: 50%;
+      background: #eef2ff;
+      color: #3730a3;
+      font-weight: 800;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 680px;
+    }
+
+    th,
+    td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: middle;
+      font-size: 14px;
+    }
+
+    th {
+      background: #f3f4f6;
+      color: #374151;
+      font-weight: 800;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .home-card {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 16px;
+      align-items: center;
+    }
+
+    .big-score {
+      min-width: 130px;
+      text-align: center;
+      padding: 16px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: #f8fafc;
+    }
+
+    .big-score strong {
+      display: block;
+      font-size: 42px;
+      line-height: 1;
+      color: var(--blue);
+    }
+
+    .assignment {
+      display: none;
+      margin-top: 16px;
+    }
+
+    .assignment.active {
+      display: grid;
+      gap: 14px;
+    }
+
+    .prompt {
+      min-height: 130px;
+      display: grid;
+      align-content: center;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      background: #fff;
+      font-size: clamp(24px, 4vw, 40px);
+      line-height: 1.45;
+      text-align: center;
+    }
+
+
+
+    .pinyin-toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: 10px;
+    }
+
+    .pinyin-toggle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: auto;
+      color: var(--ink);
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .pinyin-toggle input {
+      width: auto;
+      margin: 0;
+    }
+
+    .pinyin-box {
+      margin-top: 10px;
+      padding: 12px 14px;
+      border: 1px solid #bfdbfe;
+      border-radius: 8px;
+      background: #eff6ff;
+      color: #1e3a8a;
+      font-size: clamp(18px, 3vw, 28px);
+      line-height: 1.6;
+      text-align: center;
+      word-break: break-word;
+    }
+
+    .transcript {
+      min-height: 76px;
+      border: 1px dashed #aab4c4;
+      border-radius: 8px;
+      padding: 12px;
+      background: #fbfdff;
+      white-space: pre-wrap;
+      line-height: 1.5;
+    }
+
+    .score-line {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      min-height: 36px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 30px;
+      padding: 5px 10px;
+      border-radius: 999px;
+      background: #e5e7eb;
+      color: #374151;
+      font-weight: 800;
+      font-size: 13px;
+    }
+
+    .badge.pass {
+      color: #065f46;
+      background: #d1fae5;
+    }
+
+    .badge.fail {
+      color: #991b1b;
+      background: #fee2e2;
+    }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 22px;
+      transform: translateX(-50%);
+      z-index: 10;
+      max-width: min(520px, calc(100vw - 32px));
+      padding: 11px 14px;
+      border-radius: 8px;
+      background: #111827;
+      color: white;
+      box-shadow: var(--shadow);
+      display: none;
+    }
+
+    .toast.show {
+      display: block;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    @media (max-width: 860px) {
+      .grid.two,
+      .grid.teacher,
+      .metric-row,
+      .home-card {
+        grid-template-columns: 1fr;
+      }
+
+      .student-row {
+        grid-template-columns: 1fr;
+      }
+
+      header {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .btn,
+      .tab {
+        width: 100%;
+      }
+    }
+  </style>
+  <script defer src="https://cdn.jsdelivr.net/npm/pinyin-pro/dist/index.js"></script>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>录音 Pro 复述作业</h1>
+      <div class="status" id="globalStatus">准备就绪</div>
+    </header>
+
+    <main class="shell">
+      <div class="topbar">
+        <strong id="topTitle">登录</strong>
+        <button class="btn secondary hidden" id="logoutBtn" onclick="logout()">退出</button>
+      </div>
+
+      <section id="loginView" class="view active">
+        <div class="tabs">
+          <button class="tab active" id="studentTab" onclick="switchLogin('student')">学生</button>
+          <button class="tab" id="teacherTab" onclick="switchLogin('teacher')">教师</button>
+        </div>
+
+        <div class="grid two">
+          <div class="panel soft">
+            <div id="studentLoginPanel" class="form-stack">
+              <h2>学生登录</h2>
+              <label>
+                <span>姓名</span>
+                <input id="studentName" autocomplete="username" placeholder="例如：王小明">
+              </label>
+              <label>
+                <span>密码</span>
+                <input id="studentPassword" type="password" autocomplete="current-password">
+              </label>
+              <button class="btn green" onclick="loginStudent(this)">进入作业</button>
+            </div>
+
+            <div id="teacherLoginPanel" class="form-stack hidden">
+              <h2>教师登录</h2>
+              <label>
+                <span>教师密码</span>
+                <input id="teacherPassword" type="password" autocomplete="current-password">
+              </label>
+              <button class="btn violet" onclick="loginTeacher(this)">进入后台</button>
+              <div class="muted">首次使用默认密码为 teacher123。</div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h2>等级规则</h2>
+            <div class="metric-row">
+              <div class="metric"><span class="muted">通过</span><span class="num">70</span></div>
+              <div class="metric"><span class="muted">B 级</span><span class="num">80</span></div>
+              <div class="metric"><span class="muted">A 级</span><span class="num">90</span></div>
+              <div class="metric"><span class="muted">A*</span><span class="num">100</span></div>
+            </div>
+            <div class="muted">一次作业随机抽取最多 10 题；题库不足 10 题时按实际题数生成。</div>
+          </div>
+        </div>
+      </section>
+
+      <section id="teacherView" class="view">
+        <div class="metric-row">
+          <div class="metric"><span class="muted">题库</span><span class="num" id="teacherQuestionCount">0</span></div>
+          <div class="metric"><span class="muted">学生</span><span class="num" id="teacherStudentCount">0</span></div>
+          <div class="metric"><span class="muted">作业记录</span><span class="num" id="teacherAttemptCount">0</span></div>
+          <div class="metric"><span class="muted">当前题库</span><span class="num" id="teacherSetVersion">-</span></div>
+        </div>
+
+        <div class="grid teacher">
+          <div class="grid">
+            <div class="panel">
+              <div class="row" style="justify-content: space-between; margin-bottom: 12px;">
+                <h2>复述题库</h2>
+                <button class="btn" onclick="addQuestionRow()">新增题目</button>
+              </div>
+              <div id="questionList" class="question-list"></div>
+              <div class="row" style="margin-top: 12px;">
+                <button class="btn green" onclick="saveQuestionRows(this)">保存题库</button>
+                <span class="muted" id="questionLimitText">最多 20 题</span>
+              </div>
+            </div>
+
+            <div class="panel">
+              <h2>教师密码</h2>
+              <div class="form-stack">
+                <label>
+                  <span>当前密码</span>
+                  <input id="oldTeacherPassword" type="password">
+                </label>
+                <label>
+                  <span>新密码</span>
+                  <input id="newTeacherPassword" type="password">
+                </label>
+                <button class="btn amber" onclick="changePassword(this)">修改密码</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid">
+            <div class="panel">
+              <div class="row" style="justify-content: space-between; margin-bottom: 12px;">
+                <h2>学生账号</h2>
+                <button class="btn teal" onclick="addStudentRow()">新增学生</button>
+              </div>
+              <div id="studentList" class="student-list"></div>
+              <div class="row" style="margin-top: 12px;">
+                <button class="btn green" onclick="saveStudentRows(this)">保存学生</button>
+                <span class="muted">新学生必须填写密码；旧学生留空则不改。</span>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="row" style="justify-content: space-between; margin-bottom: 12px;">
+                <h2>成绩记录</h2>
+                <button class="btn secondary" onclick="refreshTeacherData(this)">刷新</button>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>时间</th>
+                      <th>题库</th>
+                      <th>学生</th>
+                      <th>得分</th>
+                      <th>等级</th>
+                      <th>通过题数</th>
+                      <th>最高分</th>
+                    </tr>
+                  </thead>
+                  <tbody id="attemptTable"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="studentView" class="view">
+        <div class="home-card panel">
+          <div>
+            <h2 id="studentHello">学生</h2>
+            <div class="muted" id="studentHistoryLine">暂无作业记录</div>
+          </div>
+          <div class="big-score">
+            <span class="muted">最高分</span>
+            <strong id="bestScore">0</strong>
+          </div>
+        </div>
+
+        <div class="row" style="margin: 14px 0;">
+          <button class="btn green" onclick="startHomework(this)">开始随机作业</button>
+        </div>
+
+        <div id="assignmentPanel" class="assignment">
+          <div class="panel">
+            <div class="row" style="justify-content: space-between; margin-bottom: 12px;">
+              <h2 id="questionProgress">第 1 题</h2>
+              <span class="badge" id="questionState">待录音</span>
+            </div>
+            <div class="prompt" id="promptText"></div>
+            <div class="pinyin-toggle-row">
+              <label class="pinyin-toggle">
+                <input id="showPinyinToggle" type="checkbox" onchange="togglePinyin(this.checked)">
+                显示题目拼音
+              </label>
+            </div>
+            <div class="pinyin-box hidden" id="pinyinBox"></div>
+            <div class="row" style="margin-top: 12px;">
+              <button class="btn" onclick="speakPrompt()">朗读题目</button>
+              <button class="btn red" id="recordBtn" onclick="startRecording()">开始录音</button>
+              <button class="btn amber" id="stopRecordBtn" onclick="stopRecording()" disabled>停止录音</button>
+              <button class="btn violet" onclick="scoreCurrentQuestion()">判分</button>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h3>识别文字</h3>
+            <div class="transcript" id="transcriptBox">等待录音</div>
+            <div class="score-line" id="scoreLine">
+              <span class="badge">未判分</span>
+            </div>
+            <div class="row" style="margin-top: 12px;">
+              <button class="btn green" id="nextBtn" onclick="nextOrSubmit()" disabled>下一题</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-top: 16px;">
+          <h2>最近成绩</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>时间</th>
+                  <th>题库</th>
+                  <th>得分</th>
+                  <th>等级</th>
+                  <th>通过题数</th>
+                </tr>
+              </thead>
+              <tbody id="studentHistoryTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    // Supabase Edge Function API（新加坡区域）。
+    const API_URL = new URLSearchParams(location.search).get('api')
+      || 'https://aivbntweufgvrnjoqils.supabase.co/functions/v1/recording-pro-api';
+    const SESSION_CACHE_KEY = 'recording-pro-session-v1';
+
+    const state = {
+      config: { passScore: 70, questionLimit: 20, assignmentLimit: 10, speechLang: 'zh-CN' },
+      teacherToken: '',
+      studentToken: '',
+      teacherData: null,
+      student: null,
+      dashboard: null,
+      assignment: null,
+      currentIndex: 0,
+      results: [],
+      recognition: null,
+      transcript: '',
+      recording: false,
+      showPinyin: false,
+    };
+
+    async function server(fn, ...args) {
+      if (API_URL.includes('YOUR_PROJECT_REF')) {
+        throw new Error('请先把页面中的 YOUR_PROJECT_REF 替换为 Supabase 项目编号。');
+      }
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 12000);
+      try {
+        const response = await fetch(API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fn, args }),
+          signal: controller.signal,
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok || !payload || !payload.ok) {
+          throw new Error(payload && payload.error ? payload.error : `服务器请求失败 (${response.status})`);
+        }
+        return payload.value;
+      } catch (error) {
+        if (error && error.name === 'AbortError') throw new Error('服务器响应超时，请检查网络后重试。');
+        throw error;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+
+    function switchLogin(mode) {
+      document.getElementById('studentTab').classList.toggle('active', mode === 'student');
+      document.getElementById('teacherTab').classList.toggle('active', mode === 'teacher');
+      document.getElementById('studentLoginPanel').classList.toggle('hidden', mode !== 'student');
+      document.getElementById('teacherLoginPanel').classList.toggle('hidden', mode !== 'teacher');
+    }
+
+    async function loginTeacher(btn) {
+      await withBusy(btn, async () => {
+        const password = document.getElementById('teacherPassword').value;
+        const res = await server('teacherLogin', password);
+        if (!res || !res.token) {
+          throw new Error('教师登录失败：后端没有返回登录 token。请确认 Code.gs 已更新并重新部署。');
+        }
+        state.teacherToken = res.token;
+        state.config = res.config || state.config;
+        state.teacherData = res.teacherData || emptyTeacherData();
+        showView('teacher');
+        renderTeacher();
+        saveSessionCache('teacher');
+        toast('教师后台已加载。');
+      });
+    }
+
+    async function loginStudent(btn) {
+      await withBusy(btn, async () => {
+        const name = document.getElementById('studentName').value.trim();
+        const password = document.getElementById('studentPassword').value;
+        const res = await server('studentLogin', name, password);
+        state.studentToken = res.token;
+        state.config = res.config || state.config;
+        state.student = res.student;
+        state.dashboard = res.dashboard || { bestScore: 0, history: [] };
+        showView('student');
+        renderStudentHome();
+        saveSessionCache('student');
+        toast('学生作业已打开。');
+      });
+    }
+
+    function emptyTeacherData() {
+      return {
+        questions: [],
+        students: [],
+        attempts: [],
+        bestScores: [],
+        activeSet: { setId: '', setVersion: '', submittedAt: '', questionCount: 0 }
+      };
+    }
+
+    function showView(view) {
+      ['loginView', 'teacherView', 'studentView'].forEach(id => {
+        document.getElementById(id).classList.remove('active');
+      });
+      document.getElementById(view + 'View').classList.add('active');
+      document.getElementById('logoutBtn').classList.toggle('hidden', view === 'login');
+      document.getElementById('topTitle').textContent =
+        view === 'teacher' ? '教师后台' : view === 'student' ? '学生作业' : '登录';
+      document.getElementById('globalStatus').textContent =
+        view === 'teacher' ? '教师在线' : view === 'student' ? '学生在线' : '准备就绪';
+    }
+
+    function logout() {
+      stopRecording();
+      const token = state.teacherToken || state.studentToken;
+      if (token && !API_URL.includes('YOUR_PROJECT_REF')) server('logout', token).catch(() => {});
+      localStorage.removeItem(SESSION_CACHE_KEY);
+      state.teacherToken = '';
+      state.studentToken = '';
+      state.teacherData = null;
+      state.student = null;
+      state.dashboard = null;
+      state.assignment = null;
+      state.results = [];
+      state.showPinyin = false;
+      const pinyinToggle = document.getElementById('showPinyinToggle');
+      if (pinyinToggle) pinyinToggle.checked = false;
+      updatePinyinDisplay('');
+      showView('login');
+    }
+
+    function saveSessionCache(role) {
+      const cached = role === 'teacher'
+        ? { role, token: state.teacherToken, config: state.config, teacherData: state.teacherData }
+        : { role, token: state.studentToken, config: state.config, student: state.student, dashboard: state.dashboard };
+      localStorage.setItem(SESSION_CACHE_KEY, JSON.stringify(cached));
+    }
+
+    async function restoreSession() {
+      let cached;
+      try { cached = JSON.parse(localStorage.getItem(SESSION_CACHE_KEY) || 'null'); } catch (_) { return; }
+      if (!cached || !cached.token) return;
+      state.config = cached.config || state.config;
+      if (cached.role === 'teacher') {
+        state.teacherToken = cached.token;
+        state.teacherData = cached.teacherData || emptyTeacherData();
+        showView('teacher');
+        renderTeacher();
+        try {
+          state.teacherData = await server('getTeacherData', state.teacherToken);
+          renderTeacher();
+          saveSessionCache('teacher');
+        } catch (_) { logout(); toast('登录已过期，请重新登录。'); }
+      } else if (cached.role === 'student' && cached.student) {
+        state.studentToken = cached.token;
+        state.student = cached.student;
+        state.dashboard = cached.dashboard || { bestScore: 0, history: [] };
+        showView('student');
+        renderStudentHome();
+        try {
+          state.dashboard = await server('getStudentDashboard', state.studentToken);
+          renderStudentHome();
+          saveSessionCache('student');
+        } catch (_) { logout(); toast('登录已过期，请重新登录。'); }
+      }
+    }
+
+    function renderTeacher() {
+      const data = state.teacherData || { questions: [], students: [], attempts: [] };
+      document.getElementById('teacherQuestionCount').textContent = data.questions.length;
+      document.getElementById('teacherStudentCount').textContent = data.students.length;
+      document.getElementById('teacherAttemptCount').textContent = data.attempts.length;
+      document.getElementById('teacherSetVersion').textContent =
+        data.activeSet && data.activeSet.setVersion ? `v${data.activeSet.setVersion}` : '-';
+      document.getElementById('questionLimitText').textContent = `最多 ${state.config.questionLimit || 20} 题`;
+      renderQuestionRows(data.questions);
+      renderStudentRows(data.students);
+      renderAttemptRows(data.attempts);
+    }
+
+    function renderQuestionRows(questions) {
+      const list = document.getElementById('questionList');
+      list.innerHTML = '';
+      (questions.length ? questions : [{ text: '' }]).forEach((q, index) => {
+        list.appendChild(questionRow(q, index));
+      });
+      renumberQuestions();
+    }
+
+    function questionRow(q, index) {
+      const row = document.createElement('div');
+      row.className = 'question-row';
+      row.dataset.id = q.questionId || '';
+      row.innerHTML = `
+        <span class="index">${index + 1}</span>
+        <textarea placeholder="输入要学生复述的内容">${escapeHtml(q.text || '')}</textarea>
+        <button class="btn secondary" type="button">删除</button>
+      `;
+      row.querySelector('button').onclick = () => {
+        row.remove();
+        renumberQuestions();
+      };
+      return row;
+    }
+
+    function addQuestionRow() {
+      const list = document.getElementById('questionList');
+      if (list.children.length >= (state.config.questionLimit || 20)) {
+        toast('最多只能设置 20 道题。');
+        return;
+      }
+      list.appendChild(questionRow({ text: '' }, list.children.length));
+      renumberQuestions();
+    }
+
+    function renumberQuestions() {
+      [...document.querySelectorAll('#questionList .question-row')].forEach((row, index) => {
+        row.querySelector('.index').textContent = index + 1;
+      });
+    }
+
+    async function saveQuestionRows(btn) {
+      await withBusy(btn, async () => {
+        const questions = [...document.querySelectorAll('#questionList .question-row')].map(row => ({
+          questionId: row.dataset.id || '',
+          text: row.querySelector('textarea').value.trim(),
+        }));
+        state.teacherData = await server('saveQuestions', state.teacherToken, questions);
+        renderTeacher();
+        saveSessionCache('teacher');
+        const version = state.teacherData.activeSet && state.teacherData.activeSet.setVersion;
+        toast(version ? `题库已保存为 v${version}。` : '题库已保存。');
+      });
+    }
+
+    function renderStudentRows(students) {
+      const list = document.getElementById('studentList');
+      list.innerHTML = '';
+      (students.length ? students : [{ name: '', active: true }]).forEach(student => {
+        list.appendChild(studentRow(student));
+      });
+    }
+
+    function studentRow(student) {
+      const row = document.createElement('div');
+      row.className = 'student-row';
+      row.dataset.id = student.studentId || '';
+      row.innerHTML = `
+        <input class="student-name" placeholder="姓名" value="${escapeAttribute(student.name || '')}">
+        <input class="student-password" type="password" placeholder="${student.studentId ? '留空不改密码' : '设置密码'}">
+        <label style="display:flex; align-items:center; gap:8px; color:var(--ink);">
+          <input class="student-active" type="checkbox" ${student.active === false ? '' : 'checked'} style="width:auto;">
+          启用
+        </label>
+        <button class="btn secondary" type="button">删除</button>
+      `;
+      row.querySelector('button').onclick = () => row.remove();
+      return row;
+    }
+
+    function addStudentRow() {
+      document.getElementById('studentList').appendChild(studentRow({ name: '', active: true }));
+    }
+
+    async function saveStudentRows(btn) {
+      await withBusy(btn, async () => {
+        const students = [...document.querySelectorAll('#studentList .student-row')].map(row => ({
+          studentId: row.dataset.id || '',
+          name: row.querySelector('.student-name').value.trim(),
+          password: row.querySelector('.student-password').value,
+          active: row.querySelector('.student-active').checked,
+        }));
+        state.teacherData = await server('saveStudents', state.teacherToken, students);
+        renderTeacher();
+        saveSessionCache('teacher');
+        toast('学生账号已保存。');
+      });
+    }
+
+    function renderAttemptRows(attempts) {
+      const body = document.getElementById('attemptTable');
+      if (!attempts || attempts.length === 0) {
+        body.innerHTML = '<tr><td colspan="7">暂无成绩</td></tr>';
+        return;
+      }
+      body.innerHTML = attempts.map(item => `
+        <tr>
+          <td>${escapeHtml(item.timestamp)}</td>
+          <td>${item.setVersion ? `v${escapeHtml(item.setVersion)}` : '-'}</td>
+          <td>${escapeHtml(item.studentName)}</td>
+          <td>${item.score}</td>
+          <td>${escapeHtml(item.grade)}</td>
+          <td>${item.passedCount}/${item.questionCount}</td>
+          <td>${item.bestScore}</td>
+        </tr>
+      `).join('');
+    }
+
+    async function refreshTeacherData(btn) {
+      await withBusy(btn, async () => {
+        state.teacherData = await server('getTeacherData', state.teacherToken);
+        renderTeacher();
+        saveSessionCache('teacher');
+        toast('成绩已刷新。');
+      });
+    }
+
+    async function changePassword(btn) {
+      await withBusy(btn, async () => {
+        const oldPassword = document.getElementById('oldTeacherPassword').value;
+        const newPassword = document.getElementById('newTeacherPassword').value;
+        await server('changeTeacherPassword', state.teacherToken, oldPassword, newPassword);
+        document.getElementById('oldTeacherPassword').value = '';
+        document.getElementById('newTeacherPassword').value = '';
+        toast('教师密码已修改。');
+      });
+    }
+
+    function renderStudentHome() {
+      document.getElementById('studentHello').textContent = `${state.student.name} 的作业`;
+      document.getElementById('bestScore').textContent = state.dashboard.bestScore || 0;
+      const history = state.dashboard.history || [];
+      document.getElementById('studentHistoryLine').textContent =
+        history.length ? `最近 ${history.length} 次作业记录` : '暂无作业记录';
+
+      const body = document.getElementById('studentHistoryTable');
+      if (!history.length) {
+        body.innerHTML = '<tr><td colspan="5">暂无成绩</td></tr>';
+        return;
+      }
+      body.innerHTML = history.map(item => `
+        <tr>
+          <td>${escapeHtml(item.timestamp)}</td>
+          <td>${item.setVersion ? `v${escapeHtml(item.setVersion)}` : '-'}</td>
+          <td>${item.score}</td>
+          <td>${escapeHtml(item.grade)}</td>
+          <td>${item.passedCount}/${item.questionCount}</td>
+        </tr>
+      `).join('');
+    }
+
+    async function startHomework(btn) {
+      await withBusy(btn, async () => {
+        const assignment = await server('startAssignment', state.studentToken);
+        state.assignment = assignment;
+        state.currentIndex = 0;
+        state.results = new Array(assignment.questions.length);
+        document.getElementById('assignmentPanel').classList.add('active');
+        renderCurrentQuestion();
+        toast(`已生成 v${assignment.setVersion || ''} 的 ${assignment.questions.length} 道题。`);
+      });
+    }
+
+    function renderCurrentQuestion() {
+      stopRecording();
+      const assignment = state.assignment;
+      const q = assignment.questions[state.currentIndex];
+      const saved = state.results[state.currentIndex];
+      const total = assignment.questions.length;
+
+      state.transcript = saved ? saved.spokenText : '';
+      document.getElementById('questionProgress').textContent = `第 ${state.currentIndex + 1} / ${total} 题`;
+      document.getElementById('promptText').textContent = q.text;
+      updatePinyinDisplay(q.text);
+      document.getElementById('transcriptBox').textContent = state.transcript || '等待录音';
+      document.getElementById('nextBtn').textContent = state.currentIndex === total - 1 ? '提交成绩' : '下一题';
+      document.getElementById('nextBtn').disabled = !saved || !saved.passed;
+      renderScore(saved);
+    }
+
+
+    function togglePinyin(checked) {
+      state.showPinyin = !!checked;
+      updatePinyinDisplay();
+    }
+
+    function updatePinyinDisplay(text) {
+      const box = document.getElementById('pinyinBox');
+      if (!box) return;
+
+      if (!state.showPinyin) {
+        box.classList.add('hidden');
+        box.textContent = '';
+        return;
+      }
+
+      let sourceText = text;
+      if (sourceText === undefined && state.assignment && state.assignment.questions) {
+        const current = state.assignment.questions[state.currentIndex];
+        sourceText = current ? current.text : '';
+      }
+
+      const cleanText = String(sourceText || '').trim();
+      if (!cleanText) {
+        box.classList.add('hidden');
+        box.textContent = '';
+        return;
+      }
+
+      box.textContent = getPinyinText(cleanText);
+      box.classList.remove('hidden');
+    }
+
+    function getPinyinText(text) {
+      try {
+        if (window.pinyinPro && typeof window.pinyinPro.pinyin === 'function') {
+          return window.pinyinPro.pinyin(text, {
+            toneType: 'symbol',
+            type: 'array',
+            nonZh: 'consecutive'
+          }).join(' ');
+        }
+      } catch (error) {
+        // 如果在线拼音库加载失败，下面会使用简易备用方案。
+      }
+
+      return simplePinyinFallback(text);
+    }
+
+    function simplePinyinFallback(text) {
+      const map = {
+        '一':'yī','二':'èr','三':'sān','四':'sì','五':'wǔ','六':'liù','七':'qī','八':'bā','九':'jiǔ','十':'shí',
+        '我':'wǒ','你':'nǐ','他':'tā','她':'tā','它':'tā','们':'men','的':'de','了':'le','是':'shì','不':'bù','在':'zài','有':'yǒu','和':'hé','很':'hěn','好':'hǎo',
+        '学':'xué','生':'shēng','老':'lǎo','师':'shī','中':'zhōng','文':'wén','语':'yǔ','读':'dú','说':'shuō','听':'tīng','写':'xiě','题':'tí','目':'mù',
+        '今':'jīn','天':'tiān','明':'míng','昨':'zuó','早':'zǎo','上':'shàng','下':'xià','午':'wǔ','晚':'wǎn','去':'qù','来':'lái','吃':'chī','喝':'hē','看':'kàn',
+        '爱':'ài','喜':'xǐ','欢':'huān','家':'jiā','校':'xiào','书':'shū','水':'shuǐ','火':'huǒ','山':'shān','人':'rén','大':'dà','小':'xiǎo','多':'duō','少':'shǎo'
+      };
+
+      const parts = [];
+      for (const ch of String(text || '')) {
+        if (/\s/.test(ch)) continue;
+        parts.push(map[ch] || ch);
+      }
+      return parts.join(' ');
+    }
+
+    function speakPrompt() {
+      if (!state.assignment) return;
+      const q = state.assignment.questions[state.currentIndex];
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(q.text);
+      utterance.lang = state.config.speechLang || 'zh-CN';
+      utterance.rate = 0.9;
+      window.speechSynthesis.speak(utterance);
+    }
+
+    function initRecognition() {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        toast('当前浏览器不支持语音识别，请使用 Chrome 或 Edge。');
+        return null;
+      }
+      const rec = new SpeechRecognition();
+      rec.lang = state.config.speechLang || 'zh-CN';
+      rec.continuous = false;
+      rec.interimResults = true;
+      rec.maxAlternatives = 1;
+      rec.onresult = event => {
+        let text = '';
+        for (let i = 0; i < event.results.length; i++) {
+          text += event.results[i][0].transcript;
+        }
+        state.transcript = text.trim();
+        document.getElementById('transcriptBox').textContent = state.transcript || '正在识别...';
+      };
+      rec.onerror = event => {
+        const message = speechErrorMessage(event.error);
+        document.getElementById('transcriptBox').textContent = message;
+        toast(message);
+        state.recording = false;
+        syncRecordButtons();
+      };
+      rec.onend = () => {
+        state.recording = false;
+        syncRecordButtons();
+        if (!state.transcript) {
+          document.getElementById('transcriptBox').textContent = '未识别到文字';
+        }
+      };
+      return rec;
+    }
+
+    async function startRecording() {
+      if (!state.assignment || state.recording) return;
+      state.transcript = '';
+      document.getElementById('transcriptBox').textContent = '正在听...';
+      try {
+        await requestMicrophoneAccess();
+        state.recognition = initRecognition();
+        if (!state.recognition) return;
+        state.recording = true;
+        syncRecordButtons();
+        state.recognition.start();
+      } catch (error) {
+        state.recording = false;
+        syncRecordButtons();
+        const message = microphoneErrorMessage(error);
+        document.getElementById('transcriptBox').textContent = message;
+        toast(message);
+      }
+    }
+
+    function stopRecording() {
+      if (state.recognition && state.recording) {
+        state.recognition.stop();
+      }
+      state.recording = false;
+      syncRecordButtons();
+    }
+
+    function syncRecordButtons() {
+      const recordBtn = document.getElementById('recordBtn');
+      const stopBtn = document.getElementById('stopRecordBtn');
+      if (!recordBtn || !stopBtn) return;
+      recordBtn.disabled = state.recording;
+      stopBtn.disabled = !state.recording;
+    }
+
+    async function requestMicrophoneAccess() {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        return;
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach(track => track.stop());
+    }
+
+    function speechErrorMessage(code) {
+      if (code === 'not-allowed' || code === 'service-not-allowed') {
+        return '录音权限被拒绝。请点地址栏左侧锁头，把“麦克风”改成允许，然后刷新页面再试。';
+      }
+      if (code === 'audio-capture') {
+        return '没有检测到可用麦克风，请检查电脑麦克风或耳机。';
+      }
+      if (code === 'network') {
+        return '语音识别网络连接失败，请检查网络后重试。';
+      }
+      if (code === 'no-speech') {
+        return '没有听到声音，请靠近麦克风后重试。';
+      }
+      return '录音识别失败：' + code;
+    }
+
+    function microphoneErrorMessage(error) {
+      const name = error && error.name ? error.name : '';
+      if (name === 'NotAllowedError' || name === 'SecurityError') {
+        return '录音权限被拒绝。请点地址栏左侧锁头，把“麦克风”改成允许，刷新页面；也请直接打开 Web App 链接，不要嵌在其他网页里。';
+      }
+      if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+        return '没有检测到麦克风，请检查设备后重试。';
+      }
+      if (name === 'NotReadableError') {
+        return '麦克风正在被其他软件占用，请关闭其他录音/会议软件后重试。';
+      }
+      return error && error.message ? error.message : '无法打开麦克风，请检查浏览器权限。';
+    }
+
+    function scoreCurrentQuestion() {
+      if (!state.assignment) return;
+      const q = state.assignment.questions[state.currentIndex];
+      const spokenText = state.transcript.trim();
+      if (!spokenText) {
+        toast('请先录音。');
+        return;
+      }
+
+      const score = calculateScore(q.text, spokenText);
+      const grade = gradeFromScore(score);
+      const passed = score >= (state.assignment.passScore || state.config.passScore || 70);
+      const result = {
+        questionId: q.questionId,
+        text: q.text,
+        spokenText,
+        score,
+        grade,
+        passed,
+      };
+
+      if (passed) {
+        state.results[state.currentIndex] = result;
+        document.getElementById('nextBtn').disabled = false;
+        toast('通过，可以进入下一题。');
+      } else {
+        state.results[state.currentIndex] = null;
+        document.getElementById('nextBtn').disabled = true;
+        toast('未达到 C 级，请重新录音。');
+      }
+      renderScore(result);
+    }
+
+    function renderScore(result) {
+      const line = document.getElementById('scoreLine');
+      const stateBadge = document.getElementById('questionState');
+      if (!result) {
+        line.innerHTML = '<span class="badge">未判分</span>';
+        stateBadge.textContent = '待录音';
+        stateBadge.className = 'badge';
+        return;
+      }
+      const cls = result.passed ? 'pass' : 'fail';
+      line.innerHTML = `
+        <span class="badge ${cls}">得分 ${result.score}%</span>
+        <span class="badge ${cls}">等级 ${escapeHtml(result.grade)}</span>
+        <span class="muted">${result.passed ? '已通过' : '未通过'}</span>
+      `;
+      stateBadge.textContent = result.passed ? '已通过' : '未通过';
+      stateBadge.className = 'badge ' + cls;
+    }
+
+    async function nextOrSubmit() {
+      if (!state.assignment || !state.results[state.currentIndex]) return;
+      if (state.currentIndex < state.assignment.questions.length - 1) {
+        state.currentIndex += 1;
+        renderCurrentQuestion();
+        return;
+      }
+
+      const missing = state.results.some(item => !item || !item.passed);
+      if (missing) {
+        toast('还有题目没有通过。');
+        return;
+      }
+
+      const btn = document.getElementById('nextBtn');
+      await withBusy(btn, async () => {
+        const res = await server('saveAttempt', state.studentToken, state.assignment.assignmentId, state.results);
+        state.dashboard = res.dashboard;
+        renderStudentHome();
+        saveSessionCache('student');
+        document.getElementById('assignmentPanel').classList.remove('active');
+        state.assignment = null;
+        state.results = [];
+        toast(`本次得分 ${res.score}%，等级 ${res.grade}。`);
+      });
+    }
+
+    function calculateScore(expected, spoken) {
+      const a = normalizeText(expected);
+      const b = normalizeText(spoken);
+      if (!a && !b) return 100;
+      if (!a || !b) return 0;
+      if (a === b) return 100;
+      const distance = levenshtein(a, b);
+      const maxLength = Math.max(a.length, b.length);
+      return Math.max(0, Math.round((1 - distance / maxLength) * 100));
+    }
+
+    function normalizeText(text) {
+      return String(text || '')
+        .toLowerCase()
+        .replace(/[，。！？；：、“”‘’（）《》【】…,.!?;:'"()[\]{}<>/\\|`~@#$%^&*_+=-]/g, '')
+        .replace(/\s+/g, '')
+        .trim();
+    }
+
+    function levenshtein(a, b) {
+      const rows = a.length + 1;
+      const cols = b.length + 1;
+      const dp = Array.from({ length: rows }, () => Array(cols).fill(0));
+      for (let i = 0; i < rows; i++) dp[i][0] = i;
+      for (let j = 0; j < cols; j++) dp[0][j] = j;
+      for (let i = 1; i < rows; i++) {
+        for (let j = 1; j < cols; j++) {
+          const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+          dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost);
+        }
+      }
+      return dp[a.length][b.length];
+    }
+
+    function gradeFromScore(score) {
+      if (score >= 100) return 'A*';
+      if (score >= 90) return 'A';
+      if (score >= 80) return 'B';
+      if (score >= 70) return 'C';
+      return '未通过';
+    }
+
+    async function withBusy(btn, task) {
+      const oldText = btn ? btn.textContent : '';
+      try {
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = '处理中...';
+        }
+        await task();
+      } catch (error) {
+        toast(error.message || String(error));
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = oldText;
+        }
+      }
+    }
+
+    function toast(message) {
+      const el = document.getElementById('toast');
+      el.textContent = message;
+      el.classList.add('show');
+      clearTimeout(toast.timer);
+      toast.timer = setTimeout(() => el.classList.remove('show'), 2800);
+    }
+
+    function escapeHtml(value) {
+      return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    function escapeAttribute(value) {
+      return escapeHtml(value).replace(/`/g, '&#096;');
+    }
+
+    restoreSession();
+  </script>
+</body>
+</html>
