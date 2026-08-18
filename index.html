@@ -851,6 +851,7 @@
               <button class="btn amber" id="stopRecordBtn" onclick="stopRecording()" disabled>停止录音</button>
               <button class="btn violet" onclick="scoreCurrentQuestion()">判分</button>
             </div>
+            <div class="muted" id="recordingStatus" style="margin-top:10px;">可连续录音，停顿后会自动续接，最长 5 分钟。</div>
           </div>
 
           <div class="panel">
@@ -908,6 +909,10 @@
       recognition: null,
       transcript: '',
       recording: false,
+      recognitionBaseTranscript: '',
+      recognitionStopRequested: false,
+      recordingStartedAt: 0,
+      recordingTimer: null,
       showPinyin: false,
       selectedSetId: '',
     };
@@ -1585,7 +1590,7 @@
       }
       const rec = new SpeechRecognition();
       rec.lang = state.config.speechLang || 'zh-CN';
-      rec.continuous = false;
+      rec.continuous = true;
       rec.interimResults = true;
       rec.maxAlternatives = 1;
       rec.onresult = event => {
@@ -1593,22 +1598,39 @@
         for (let i = 0; i < event.results.length; i++) {
           text += event.results[i][0].transcript;
         }
-        state.transcript = text.trim();
+        state.transcript = [state.recognitionBaseTranscript, text.trim()].filter(Boolean).join(' ').trim();
         document.getElementById('transcriptBox').textContent = state.transcript || '正在识别...';
       };
       rec.onerror = event => {
+        if (event.error === 'no-speech' && state.recording && !state.recognitionStopRequested) {
+          updateRecordingStatus('暂时未听到声音，仍在继续收音…');
+          return;
+        }
         const message = speechErrorMessage(event.error);
         document.getElementById('transcriptBox').textContent = message;
         toast(message);
+        state.recognitionStopRequested = true;
         state.recording = false;
+        clearRecordingTimer();
         syncRecordButtons();
       };
       rec.onend = () => {
-        state.recording = false;
-        syncRecordButtons();
-        if (!state.transcript) {
-          document.getElementById('transcriptBox').textContent = '未识别到文字';
+        if (state.recording && !state.recognitionStopRequested) {
+          state.recognitionBaseTranscript = state.transcript;
+          setTimeout(() => {
+            if (!state.recording || state.recognitionStopRequested) return;
+            try {
+              state.recognition = initRecognition();
+              state.recognition.start();
+            } catch (error) {
+              stopRecording();
+              toast('录音服务暂时中断，请再点一次“开始录音”。');
+            }
+          }, 250);
+          return;
         }
+        syncRecordButtons();
+        if (!state.transcript) document.getElementById('transcriptBox').textContent = '未识别到文字';
       };
       return rec;
     }
@@ -1616,16 +1638,22 @@
     async function startRecording() {
       if (!state.assignment || state.recording) return;
       state.transcript = '';
+      state.recognitionBaseTranscript = '';
+      state.recognitionStopRequested = false;
       document.getElementById('transcriptBox').textContent = '正在听...';
       try {
         await requestMicrophoneAccess();
         state.recognition = initRecognition();
         if (!state.recognition) return;
         state.recording = true;
+        state.recordingStartedAt = Date.now();
+        startRecordingTimer();
         syncRecordButtons();
         state.recognition.start();
       } catch (error) {
         state.recording = false;
+        state.recognitionStopRequested = true;
+        clearRecordingTimer();
         syncRecordButtons();
         const message = microphoneErrorMessage(error);
         document.getElementById('transcriptBox').textContent = message;
@@ -1633,12 +1661,53 @@
       }
     }
 
-    function stopRecording() {
-      if (state.recognition && state.recording) {
-        state.recognition.stop();
-      }
+    function stopRecording(reachedLimit = false) {
+      const wasRecording = state.recording;
+      state.recognitionStopRequested = true;
       state.recording = false;
+      clearRecordingTimer();
+      if (state.recognition && wasRecording) {
+        try { state.recognition.stop(); } catch (error) { /* 已经停止时无需处理 */ }
+      }
       syncRecordButtons();
+      updateRecordingStatus(reachedLimit
+        ? '已录满 5 分钟并自动停止，可以直接判分或重新录音。'
+        : '可连续录音，停顿后会自动续接，最长 5 分钟。');
+    }
+
+    function startRecordingTimer() {
+      clearRecordingTimer();
+      updateRecordingStatus();
+      state.recordingTimer = setInterval(() => {
+        const elapsed = Date.now() - state.recordingStartedAt;
+        if (elapsed >= 5 * 60 * 1000) {
+          stopRecording(true);
+          return;
+        }
+        updateRecordingStatus();
+      }, 1000);
+    }
+
+    function clearRecordingTimer() {
+      if (state.recordingTimer) clearInterval(state.recordingTimer);
+      state.recordingTimer = null;
+    }
+
+    function updateRecordingStatus(message = '') {
+      const status = document.getElementById('recordingStatus');
+      if (!status) return;
+      if (message) {
+        status.textContent = message;
+        return;
+      }
+      if (!state.recording) {
+        status.textContent = '可连续录音，停顿后会自动续接，最长 5 分钟。';
+        return;
+      }
+      const elapsedSeconds = Math.max(0, Math.floor((Date.now() - state.recordingStartedAt) / 1000));
+      const minutes = String(Math.floor(elapsedSeconds / 60)).padStart(2, '0');
+      const seconds = String(elapsedSeconds % 60).padStart(2, '0');
+      status.textContent = `录音中 ${minutes}:${seconds} / 05:00 · 读完后请点“停止录音”`;
     }
 
     function syncRecordButtons() {
@@ -1646,6 +1715,7 @@
       const stopBtn = document.getElementById('stopRecordBtn');
       if (!recordBtn || !stopBtn) return;
       recordBtn.disabled = state.recording;
+      recordBtn.textContent = state.recording ? '录音中…' : '开始录音';
       stopBtn.disabled = !state.recording;
     }
 
@@ -1852,3 +1922,4 @@
   </script>
 </body>
 </html>
+
