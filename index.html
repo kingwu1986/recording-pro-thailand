@@ -1917,8 +1917,76 @@
       return escapeHtml(value).replace(/`/g, '&#096;');
     }
 
+    function allowedPortalOrigin(origin) {
+      try {
+        const url = new URL(origin);
+        return origin === 'https://pinyin-english-classroom.netlify.app'
+          || ((url.hostname === 'localhost' || url.hostname === '127.0.0.1') && url.protocol === 'http:');
+      } catch (_) { return false; }
+    }
+
+    async function applyPortalSession(message) {
+      if (message.type !== 'mabis-portal-session' || message.app !== 'recording' || !message.token) return;
+      try {
+        if (message.role === 'teacher') {
+          state.teacherToken = message.token;
+          state.studentToken = '';
+          state.teacherData = await server('getTeacherData', state.teacherToken);
+          showView('teacher'); renderTeacher(); saveSessionCache('teacher');
+        } else {
+          state.studentToken = message.token;
+          state.teacherToken = '';
+          state.student = message.student;
+          state.dashboard = await server('getStudentDashboard', state.studentToken);
+          state.selectedSetId = message.assignmentId || state.dashboard.availableAssignments?.[0]?.setId || '';
+          showView('student'); renderStudentHome(); saveSessionCache('student');
+          if (message.assignmentId && state.dashboard.availableAssignments?.some(item => item.setId === message.assignmentId)) await startHomework(message.assignmentId);
+        }
+        history.replaceState({}, document.title, location.pathname);
+      } catch (error) { toast('统一登录已失效，请返回作业中心重新进入。'); }
+    }
+
+    function receivePortalSession(event) {
+      if (!allowedPortalOrigin(event.origin)) return;
+      applyPortalSession(event.data || {});
+    }
+
+    function takeNamedPortalSession() {
+      if (!window.name.startsWith('mabisPortal:')) return null;
+      try {
+        let encoded = window.name.slice('mabisPortal:'.length).replace(/-/g, '+').replace(/_/g, '/');
+        while (encoded.length % 4) encoded += '=';
+        const bytes = Uint8Array.from(atob(encoded), char => char.charCodeAt(0));
+        window.name = '';
+        return JSON.parse(new TextDecoder().decode(bytes));
+      } catch (_) { window.name = ''; return null; }
+    }
+
+    async function consumePortalTicket() {
+      const ticket = new URLSearchParams(location.hash.slice(1)).get('handoff');
+      if (!ticket) return false;
+      const response = await fetch('https://aivbntweufgvrnjoqils.supabase.co/functions/v1/assignment-hub-api', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fn: 'consumeHandoff', args: [ticket, 'recording'] }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.ok) throw new Error(data.error || '一次性登录票据无法兑换。');
+      await applyPortalSession({ type: 'mabis-portal-session', app: 'recording', ...data.value });
+      return true;
+    }
+
+    async function announcePortalReady() {
+      try { if (await consumePortalTicket()) return; } catch (error) { toast(error.message || '统一登录失败。'); }
+      if (new URLSearchParams(location.search).get('portal') === '1' && window.opener) {
+        window.addEventListener('message', receivePortalSession);
+        window.opener.postMessage({ type: 'mabis-portal-ready', app: 'recording' }, '*');
+      }
+      const namedSession = takeNamedPortalSession();
+      if (namedSession) applyPortalSession(namedSession);
+    }
+
     loadTeacherOptions();
-    restoreSession();
+    restoreSession().finally(announcePortalReady);
   </script>
 </body>
 </html>
