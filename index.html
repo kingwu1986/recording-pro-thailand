@@ -1921,6 +1921,7 @@
       try {
         const url = new URL(origin);
         return origin === 'https://pinyin-english-classroom.netlify.app'
+          || origin === 'https://mabis-homework-hub.netlify.app'
           || ((url.hostname === 'localhost' || url.hostname === '127.0.0.1') && url.protocol === 'http:');
       } catch (_) { return false; }
     }
