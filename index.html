@@ -857,6 +857,10 @@
           <div class="panel">
             <h3>识别文字</h3>
             <div class="transcript" id="transcriptBox">等待录音</div>
+            <div id="playbackBox" class="hidden" style="margin-top:10px;">
+              <div class="muted" style="margin-bottom:6px;">本题录音回放</div>
+              <audio id="playbackAudio" controls style="width:100%;"></audio>
+            </div>
             <div class="score-line" id="scoreLine">
               <span class="badge">未判分</span>
             </div>
@@ -911,6 +915,13 @@
       recording: false,
       recognitionBaseTranscript: '',
       recognitionStopRequested: false,
+      recognitionRetries: 0,
+      recognitionHeardAnything: false,
+      micGranted: false,
+      mediaStream: null,
+      mediaRecorder: null,
+      audioChunks: [],
+      audioClips: [],
       recordingStartedAt: 0,
       recordingTimer: null,
       showPinyin: false,
@@ -1012,6 +1023,8 @@
         document.getElementById(id).classList.remove('active');
       });
       document.getElementById(view + 'View').classList.add('active');
+      // 离开练习页就把麦克风还给系统，浏览器上的录音标志也随之熄灭。
+      if (view !== 'student') releaseMicrophone();
       document.getElementById('logoutBtn').classList.toggle('hidden', view === 'login');
       document.getElementById('topTitle').textContent =
         view === 'teacher' ? '教师后台' : view === 'student' ? '学生作业' : '登录';
@@ -1025,6 +1038,8 @@
 
     function logout() {
       stopRecording();
+      releaseMicrophone();
+      clearAudioClips();
       const token = state.teacherToken || state.studentToken;
       if (token && !API_URL.includes('YOUR_PROJECT_REF')) server('logout', token).catch(() => {});
       localStorage.removeItem(SESSION_CACHE_KEY);
@@ -1483,6 +1498,7 @@
         state.assignment = assignment;
         state.currentIndex = 0;
         state.results = new Array(assignment.questions.length);
+        clearAudioClips(); // 换作业时丢掉上一份的录音，顺便释放 blob URL
         document.getElementById('assignmentPanel').classList.add('active');
         renderCurrentQuestion();
         toast(`已打开 ${assignment.assignmentDate} 的 ${assignment.questions.length} 道题。`);
@@ -1503,6 +1519,7 @@
       document.getElementById('transcriptBox').textContent = state.transcript || '等待录音';
       document.getElementById('nextBtn').textContent = state.currentIndex === total - 1 ? '提交成绩' : '下一题';
       document.getElementById('nextBtn').disabled = !saved || !saved.passed;
+      renderPlayback(state.currentIndex);
       renderScore(saved);
     }
 
@@ -1582,10 +1599,30 @@
       window.speechSynthesis.speak(utterance);
     }
 
+    // Chromium 的语音识别要把音频送到浏览器厂商的云端服务。官方 Chrome 和 Edge 自带凭据，
+    // 但发行版自己编译的 Chromium、Brave 等没有，一按录音就立刻抛 network / service-not-allowed。
+    const SPEECH_BACKEND_MESSAGE = '这个浏览器没有可用的语音识别服务（Linux 版 Chromium、Brave 等常见）。请改用 Microsoft Edge 或官方版 Google Chrome 打开本页。';
+    const SPEECH_RETRY_LIMIT = 3;
+
+    function speechRecognitionCtor() {
+      return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+    }
+
+    function failRecognition(message) {
+      state.recognitionStopRequested = true;
+      state.recording = false;
+      clearRecordingTimer();
+      finishAudioCapture(); // 会触发 onstop，已经录到的音频照样保存
+      syncRecordButtons();
+      if (!state.transcript) document.getElementById('transcriptBox').textContent = message;
+      updateRecordingStatus(message);
+      toast(message);
+    }
+
     function initRecognition() {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      const SpeechRecognition = speechRecognitionCtor();
       if (!SpeechRecognition) {
-        toast('当前浏览器不支持语音识别，请使用 Chrome 或 Edge。');
+        toast('当前浏览器不支持语音识别，请使用 Edge 或官方版 Chrome。');
         return null;
       }
       const rec = new SpeechRecognition();
@@ -1600,33 +1637,49 @@
         }
         state.transcript = [state.recognitionBaseTranscript, text.trim()].filter(Boolean).join(' ').trim();
         document.getElementById('transcriptBox').textContent = state.transcript || '正在识别...';
+        // 收到过结果就说明识别服务是通的，之前的断线不再累计。
+        state.recognitionHeardAnything = true;
+        state.recognitionRetries = 0;
       };
       rec.onerror = event => {
-        if (event.error === 'no-speech' && state.recording && !state.recognitionStopRequested) {
+        const code = event.error;
+        if (!state.recording || state.recognitionStopRequested) return;
+        if (code === 'no-speech') {
           updateRecordingStatus('暂时未听到声音，仍在继续收音…');
           return;
         }
-        const message = speechErrorMessage(event.error);
-        document.getElementById('transcriptBox').textContent = message;
-        toast(message);
-        state.recognitionStopRequested = true;
-        state.recording = false;
-        clearRecordingTimer();
-        syncRecordButtons();
+        // 进到这里之前 requestMicrophoneAccess() 已经拿到麦克风权限了，
+        // 所以此时再报 not-allowed / service-not-allowed 只可能是浏览器缺识别服务。
+        if ((code === 'not-allowed' || code === 'service-not-allowed') && state.micGranted) {
+          failRecognition(SPEECH_BACKEND_MESSAGE);
+          return;
+        }
+        if (code === 'network' || code === 'aborted') {
+          state.recognitionRetries += 1;
+          if (state.recognitionRetries <= SPEECH_RETRY_LIMIT) {
+            updateRecordingStatus(`识别服务断开，正在第 ${state.recognitionRetries} 次重连…`);
+            return; // 让 onend 负责重启，不要中断本次录音
+          }
+          failRecognition(state.recognitionHeardAnything
+            ? '语音识别多次断线，请检查网络后再点“开始录音”。'
+            : SPEECH_BACKEND_MESSAGE);
+          return;
+        }
+        failRecognition(speechErrorMessage(code));
       };
       rec.onend = () => {
-        if (state.recording && !state.recognitionStopRequested) {
+        if (state.recording && !state.recognitionStopRequested && state.recognitionRetries <= SPEECH_RETRY_LIMIT) {
           state.recognitionBaseTranscript = state.transcript;
           setTimeout(() => {
             if (!state.recording || state.recognitionStopRequested) return;
             try {
               state.recognition = initRecognition();
+              if (!state.recognition) throw new Error('no recognition');
               state.recognition.start();
             } catch (error) {
-              stopRecording();
-              toast('录音服务暂时中断，请再点一次“开始录音”。');
+              failRecognition('录音服务暂时中断，请再点一次“开始录音”。');
             }
-          }, 250);
+          }, Math.min(250 * (state.recognitionRetries + 1), 1500));
           return;
         }
         syncRecordButtons();
@@ -1640,11 +1693,21 @@
       state.transcript = '';
       state.recognitionBaseTranscript = '';
       state.recognitionStopRequested = false;
+      state.recognitionRetries = 0;
+      state.recognitionHeardAnything = false;
       document.getElementById('transcriptBox').textContent = '正在听...';
       try {
-        await requestMicrophoneAccess();
+        state.mediaStream = await requestMicrophoneAccess();
+        startAudioCapture(state.mediaStream);
         state.recognition = initRecognition();
-        if (!state.recognition) return;
+        if (!state.recognition) {
+          // 识别不可用也要把音频录完，老师至少能听到学生的发音。
+          state.recording = true;
+          state.recordingStartedAt = Date.now();
+          startRecordingTimer();
+          syncRecordButtons();
+          return;
+        }
         state.recording = true;
         state.recordingStartedAt = Date.now();
         startRecordingTimer();
@@ -1654,6 +1717,7 @@
         state.recording = false;
         state.recognitionStopRequested = true;
         clearRecordingTimer();
+        releaseMicrophone();
         syncRecordButtons();
         const message = microphoneErrorMessage(error);
         document.getElementById('transcriptBox').textContent = message;
@@ -1669,6 +1733,7 @@
       if (state.recognition && wasRecording) {
         try { state.recognition.stop(); } catch (error) { /* 已经停止时无需处理 */ }
       }
+      finishAudioCapture();
       syncRecordButtons();
       updateRecordingStatus(reachedLimit
         ? '已录满 5 分钟并自动停止，可以直接判分或重新录音。'
@@ -1719,12 +1784,120 @@
       stopBtn.disabled = !state.recording;
     }
 
+    function streamIsLive(stream) {
+      return !!stream && stream.getAudioTracks().some(track => track.readyState === 'live');
+    }
+
+    // 每调用一次 getUserMedia，file:// 这种不记忆授权的环境就会重新弹一次窗，
+    // 所以同一次练习里复用同一条音轨，只有离开练习页时才真正释放麦克风。
     async function requestMicrophoneAccess() {
+      if (streamIsLive(state.mediaStream)) return state.mediaStream;
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        return;
+        return null;
       }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      stream.getTracks().forEach(track => track.stop());
+      state.micGranted = true;
+      return stream;
+    }
+
+    function pickAudioMime() {
+      if (!window.MediaRecorder) return null;
+      const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'];
+      for (const type of candidates) {
+        if (MediaRecorder.isTypeSupported(type)) return type;
+      }
+      return '';
+    }
+
+    // 录音本身不依赖任何云端服务，所以即使语音识别失败，声音也照样能录下来。
+    function startAudioCapture(stream) {
+      state.audioChunks = [];
+      const mime = pickAudioMime();
+      if (mime === null || !stream) return;
+      // onstop 是异步触发的，而切题会先改 currentIndex 再停止录音，
+      // 所以必须在开录时就把题号固定下来，否则音频会存到下一题名下。
+      const clipIndex = state.currentIndex;
+      try {
+        const recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+        recorder.ondataavailable = event => {
+          if (event.data && event.data.size) state.audioChunks.push(event.data);
+        };
+        recorder.onstop = () => {
+          const type = recorder.mimeType || mime || 'audio/webm';
+          const blob = new Blob(state.audioChunks, { type });
+          state.audioChunks = [];
+          if (blob.size) saveAudioClip(clipIndex, blob);
+        };
+        recorder.start(1000); // 每秒切一片，中途出错也能保住已录部分
+        state.mediaRecorder = recorder;
+      } catch (error) {
+        state.mediaRecorder = null; // 录音不可用不影响识别流程
+      }
+    }
+
+    function clearAudioClips() {
+      state.audioClips.forEach(clip => { if (clip && clip.url) URL.revokeObjectURL(clip.url); });
+      state.audioClips = [];
+      renderPlayback(-1);
+    }
+
+    function saveAudioClip(index, blob) {
+      const previous = state.audioClips[index];
+      if (previous && previous.url) URL.revokeObjectURL(previous.url);
+      state.audioClips[index] = { blob, url: URL.createObjectURL(blob), size: blob.size, type: blob.type };
+      // 可能已经切到别的题了，只有还停在本题时才刷新播放器。
+      if (index === state.currentIndex) renderPlayback(index);
+    }
+
+    function renderPlayback(index) {
+      const box = document.getElementById('playbackBox');
+      const audio = document.getElementById('playbackAudio');
+      if (!box || !audio) return;
+      const clip = state.audioClips[index];
+      if (!clip) {
+        box.classList.add('hidden');
+        audio.removeAttribute('src');
+        return;
+      }
+      audio.src = clip.url;
+      box.classList.remove('hidden');
+    }
+
+    // 停止本题录音，但保留音轨，下一题就不用再申请一次权限。
+    function finishAudioCapture() {
+      if (state.mediaRecorder && state.mediaRecorder.state !== 'inactive') {
+        try { state.mediaRecorder.stop(); } catch (error) { /* 已经停止 */ }
+      }
+      state.mediaRecorder = null;
+    }
+
+    // 真正关掉麦克风（浏览器上的录音标志随之熄灭），离开练习页时调用。
+    function releaseMicrophone() {
+      finishAudioCapture();
+      if (state.mediaStream) {
+        state.mediaStream.getTracks().forEach(track => track.stop());
+        state.mediaStream = null;
+      }
+    }
+
+    // 只是提前提醒，不拦截：真正的判断还是靠录音时的实际报错。
+    function checkSpeechSupport() {
+      const status = document.getElementById('recordingStatus');
+      if (!status) return;
+      if (!speechRecognitionCtor()) {
+        status.textContent = '当前浏览器不支持语音识别，请改用 Microsoft Edge 或官方版 Google Chrome。';
+        return;
+      }
+      const brands = (navigator.userAgentData && navigator.userAgentData.brands) || [];
+      // 官方 Chrome 会带 "Google Chrome"，Edge 会带 "Microsoft Edge"。
+      // 只剩 "Chromium" 和占位品牌，说明是没有识别服务凭据的自编译版本。
+      const hasVendorBrand = brands.some(item => {
+        const name = (item.brand || '').toLowerCase();
+        return name && name !== 'chromium' && !name.includes('not') && !name.includes('brand');
+      });
+      if ((brands.length && !hasVendorBrand) || navigator.brave) {
+        status.textContent = '提示：本浏览器可能没有语音识别服务，若一按录音就停止，请改用 Microsoft Edge 或官方版 Google Chrome。';
+      }
     }
 
     function speechErrorMessage(code) {
@@ -1986,6 +2159,7 @@
       if (namedSession) applyPortalSession(namedSession);
     }
 
+    checkSpeechSupport();
     loadTeacherOptions();
     restoreSession().finally(announcePortalReady);
   </script>
