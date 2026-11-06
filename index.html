@@ -765,9 +765,17 @@
             <div class="row">
               <button class="btn secondary" onclick="refreshTeacherData(this)">刷新</button>
               <button class="btn green" onclick="downloadGrades()">下载本次作业成绩 CSV</button>
-              <button class="btn green" title="导出当前老师全部学生的每次提交成绩及汇总；平均分＝总分÷已提交次数，重复提交也计入" onclick="downloadAllGrades(this)">下载全部学生成绩及平均分</button>
+              <button class="btn green" title="平均分＝计入作业得分之和÷计入作业总数；同一作业取最高分，未完成按0分" onclick="downloadAllGrades(this)">下载全部学生成绩及平均分</button>
             </div>
           </div>
+          <div class="row" style="margin: 10px 0;">
+            <label style="display:flex;align-items:center;gap:8px;">
+              <input id="includeAssignmentAverage" type="checkbox" style="width:auto;" onchange="saveAssignmentAverage(this)">
+              本次作业计入平均分
+            </label>
+            <span class="muted" id="averageAssignmentInfo"></span>
+          </div>
+          <p class="muted">平均分＝计入作业得分之和 ÷ 计入作业总数。同一作业取最高分，未完成按 0 分；关闭开关只影响平均分，成绩明细仍保留。</p>
           <div class="table-wrap grade-table">
             <table>
               <thead>
@@ -1298,6 +1306,26 @@
       renderGradeRows();
     }
 
+    async function saveAssignmentAverage(input) {
+      const select = document.getElementById('gradeAssignmentFilter');
+      const setId = select.value;
+      if (!setId) return;
+      const previous = !input.checked;
+      input.disabled = true;
+      select.disabled = true;
+      try {
+        state.teacherData = await server('setAssignmentAverageIncluded', state.teacherToken, setId, input.checked);
+        saveSessionCache('teacher');
+        toast(input.checked ? '已保存：本次作业计入平均分。' : '已保存：本次作业不计入平均分，成绩仍保留。');
+      } catch (error) {
+        input.checked = previous;
+        toast(error.message || '保存失败，请重试。');
+      } finally {
+        select.disabled = false;
+        renderGradeRows();
+      }
+    }
+
     function currentGradeRows() {
       const data = state.teacherData || emptyTeacherData();
       const setId = document.getElementById('gradeAssignmentFilter').value;
@@ -1310,6 +1338,13 @@
     }
 
     function renderGradeRows() {
+      const sets = state.teacherData?.sets || [];
+      const set = sets.find(s => s.setId === document.getElementById('gradeAssignmentFilter').value);
+      const checkbox = document.getElementById('includeAssignmentAverage');
+      checkbox.checked = !!set && set.includeInAverage !== false;
+      checkbox.disabled = !set;
+      const includedCount = sets.filter(s => s.published && s.includeInAverage !== false).length;
+      document.getElementById('averageAssignmentInfo').textContent = `当前计入平均分：${includedCount} 份已发布作业`;
       const body = document.getElementById('gradeTable');
       const rows = currentGradeRows();
       if (!rows.length) {
@@ -1364,19 +1399,24 @@
       toast('成绩文件已下载。');
     }
 
-    // Every submitted attempt counts once, including repeat submissions and zero scores.
+    // Use all included published assignments as the denominator, not submissions.
     function allGradeExportRows(data) {
-      const header = ['记录类型','学生','账号状态','作业次数','总分','平均成绩（百分制）','作业日期','作业名称','本次得分（百分制）','等级','通过题数','提交时间','提交编号'];
+      const header = ['记录类型','学生','账号状态','计入作业总次数','计入作业总分（每份最高分）','平均成绩（百分制）','作业日期','作业名称','本次得分（百分制）','等级','通过题数','提交时间','提交编号','本作业是否计入平均分'];
       const rows = [header];
+      const includedIds = new Set((data.sets || []).filter(s => s.published && s.includeInAverage !== false).map(s => s.setId));
       for (const student of data.students || []) {
         const attempts = (data.attempts || []).filter(a => a.studentId === student.studentId);
-        const total = attempts.reduce((sum, a) => sum + Number(a.score), 0);
-        const average = attempts.length ? (total / attempts.length).toFixed(2) : '暂无成绩';
+        const best = new Map();
+        for (const a of attempts) {
+          if (includedIds.has(a.setId)) best.set(a.setId, Math.max(best.get(a.setId) || 0, Number(a.score)));
+        }
+        const total = [...best.values()].reduce((sum, score) => sum + score, 0);
+        const average = includedIds.size ? (total / includedIds.size).toFixed(2) : '暂无计入作业';
         const account = student.active ? '启用' : '停用';
-        rows.push(['学生汇总',student.name,account,attempts.length,total,average,'','','','','','','']);
+        rows.push(['学生汇总',student.name,account,includedIds.size,total,average,'','','','','','','','']);
         for (const a of attempts) {
           rows.push(['提交明细',student.name,account,'','','',a.assignmentDate,a.assignmentTitle,
-            a.score,a.grade,`${a.passedCount}/${a.questionCount}`,a.timestamp,a.attemptId]);
+            a.score,a.grade,`${a.passedCount}/${a.questionCount}`,a.timestamp,a.attemptId,includedIds.has(a.setId) ? '是' : '否']);
         }
       }
       return rows;
@@ -1400,7 +1440,7 @@
         link.click();
         link.remove();
         setTimeout(() => URL.revokeObjectURL(url), 1000);
-        toast('全部成绩已下载：平均分＝总分÷已提交次数，重复提交也计入。');
+        toast('全部成绩已下载：按计入作业总数平均，未完成按0分。');
       });
     }
 

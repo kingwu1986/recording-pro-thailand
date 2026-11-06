@@ -125,7 +125,7 @@ async function teacherData(teacherId: string) {
     supabase.from("teachers").select("id,username,display_name,is_admin").eq("id", teacherId).single(),
     supabase
       .from("question_sets")
-      .select("id,version,title,assignment_date,published,created_at,questions(id,position,text)")
+      .select("id,version,title,assignment_date,published,include_in_average,created_at,questions(id,position,text)")
       .eq("teacher_id", teacherId)
       .order("assignment_date", { ascending: false })
       .order("created_at", { ascending: false }),
@@ -151,6 +151,7 @@ async function teacherData(teacherId: string) {
     title: set.title,
     assignmentDate: set.assignment_date,
     published: set.published,
+    includeInAverage: set.include_in_average,
     createdAt: formatTime(set.created_at),
     questions: (set.questions || [])
       .sort((a: any, b: any) => a.position - b.position)
@@ -235,7 +236,16 @@ async function allTeacherGrades(teacherId: string) {
     .select("username,display_name").eq("id", teacherId).single());
   const students: any[] = [];
   const attempts: any[] = [];
+  const sets: any[] = [];
   const pageSize = 500;
+  for (let offset = 0; ; offset += pageSize) {
+    const page = must(await supabase.from("question_sets")
+      .select("id,title,assignment_date,published,include_in_average")
+      .eq("teacher_id", teacherId).order("id").range(offset, offset + pageSize - 1));
+    sets.push(...page.map((s: any) => ({ setId: s.id, title: s.title,
+      assignmentDate: s.assignment_date, published: s.published, includeInAverage: s.include_in_average })));
+    if (page.length < pageSize) break;
+  }
   for (let offset = 0; ; offset += pageSize) {
     const page = must(await supabase.from("students")
       .select("id,name,active").eq("teacher_id", teacherId)
@@ -258,7 +268,7 @@ async function allTeacherGrades(teacherId: string) {
     }));
     if (page.length < pageSize) break;
   }
-  return { teacher: { username: teacher.username, displayName: teacher.display_name }, students, attempts };
+  return { teacher: { username: teacher.username, displayName: teacher.display_name }, students, attempts, sets };
 }
 
 async function studentDashboard(studentId: string, teacherId: string) {
@@ -374,6 +384,17 @@ async function route(fn: string, args: any[]) {
   if (fn === "getTeacherGrades") {
     const session = await requireSession(String(args[0] || ""), "teacher");
     return await allTeacherGrades(session.teacher_id);
+  }
+
+  if (fn === "setAssignmentAverageIncluded") {
+    const session = await requireSession(String(args[0] || ""), "teacher");
+    if (typeof args[2] !== "boolean") throw new Error("请选择是否计入平均分。");
+    const updated = must(await supabase.from("question_sets")
+      .update({ include_in_average: args[2] })
+      .eq("id", String(args[1] || "")).eq("teacher_id", session.teacher_id)
+      .select("id").maybeSingle());
+    if (!updated) throw new Error("这份作业不存在或不属于当前老师。");
+    return await teacherData(session.teacher_id);
   }
 
   if (fn === "getTeacherData") {
