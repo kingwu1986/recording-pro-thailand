@@ -764,7 +764,8 @@
             </label>
             <div class="row">
               <button class="btn secondary" onclick="refreshTeacherData(this)">刷新</button>
-              <button class="btn green" onclick="downloadGrades()">下载成绩 CSV</button>
+              <button class="btn green" onclick="downloadGrades()">下载本次作业成绩 CSV</button>
+              <button class="btn green" title="导出当前老师全部学生的每次提交成绩及汇总；平均分＝总分÷已提交次数，重复提交也计入" onclick="downloadAllGrades(this)">下载全部学生成绩及平均分</button>
             </div>
           </div>
           <div class="table-wrap grade-table">
@@ -1361,6 +1362,46 @@
       link.remove();
       URL.revokeObjectURL(url);
       toast('成绩文件已下载。');
+    }
+
+    // Every submitted attempt counts once, including repeat submissions and zero scores.
+    function allGradeExportRows(data) {
+      const header = ['记录类型','学生','账号状态','作业次数','总分','平均成绩（百分制）','作业日期','作业名称','本次得分（百分制）','等级','通过题数','提交时间','提交编号'];
+      const rows = [header];
+      for (const student of data.students || []) {
+        const attempts = (data.attempts || []).filter(a => a.studentId === student.studentId);
+        const total = attempts.reduce((sum, a) => sum + Number(a.score), 0);
+        const average = attempts.length ? (total / attempts.length).toFixed(2) : '暂无成绩';
+        const account = student.active ? '启用' : '停用';
+        rows.push(['学生汇总',student.name,account,attempts.length,total,average,'','','','','','','']);
+        for (const a of attempts) {
+          rows.push(['提交明细',student.name,account,'','','',a.assignmentDate,a.assignmentTitle,
+            a.score,a.grade,`${a.passedCount}/${a.questionCount}`,a.timestamp,a.attemptId]);
+        }
+      }
+      return rows;
+    }
+
+    async function downloadAllGrades(btn) {
+      await withBusy(btn, async () => {
+        const data = await server('getTeacherGrades', state.teacherToken);
+        if (!(data.students || []).length) {
+          toast('当前老师名下暂无学生。');
+          return;
+        }
+        const csv = '\uFEFF' + allGradeExportRows(data).map(row => row.map(csvCell).join(',')).join('\r\n');
+        const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+        const link = document.createElement('a');
+        link.href = url;
+        const date = new Date().toISOString().slice(0, 10);
+        link.download = `录音Pro全部学生成绩及平均分_${data.teacher.username}_${date}.csv`;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        toast('全部成绩已下载：平均分＝总分÷已提交次数，重复提交也计入。');
+      });
     }
 
     function csvCell(value) {
